@@ -1,0 +1,8 @@
+Code-Review+2: Tomi Juvonen <tomi.juvonen@nokia.com>
+Workflow+1: Tomi Juvonen <tomi.juvonen@nokia.com>
+Verified+2: Zuul
+Submitted-by: Zuul
+Submitted-at: Fri, 29 Jun 2018 06:06:39 +0000
+Reviewed-on: https://review.openstack.org/579061
+Project: openstack/fenix
+Branch: refs/heads/master
