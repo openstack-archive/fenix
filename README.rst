@@ -24,8 +24,13 @@ infrastructure components can have this information. Special case for this
 would also be telling about adding or removing a host.
 
 * Free software: Apache license
-* Documentation: https://docs.openstack.org/fenix/latest
-* Source: https://git.openstack.org/cgit/openstack/fenix* Bugs: https://bugs.launchpad.net/fenixFeatures
+* Documentation: https://wiki.openstack.org/wiki/Fenix
+* Source: https://git.openstack.org/cgit/openstack/fenix
+* Launchpad: https://launchpad.net/fenix
+* Bugs: https://bugs.launchpad.net/fenix
+* Blueprints: https://blueprints.launchpad.net/fenix
+* How to contribute: https://docs.openstack.org/infra/manual/developers.html
+
 --------
 
 * TODO
