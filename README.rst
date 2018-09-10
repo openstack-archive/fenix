@@ -25,6 +25,7 @@ would also be telling about adding or removing a host.
 
 * Free software: Apache license
 * Documentation: https://wiki.openstack.org/wiki/Fenix
+* Wiki: https://wiki.openstack.org/wiki/Fenix
 * Source: https://git.openstack.org/cgit/openstack/fenix
 * Launchpad: https://launchpad.net/fenix
 * Bugs: https://bugs.launchpad.net/fenix
