@@ -135,7 +135,7 @@ class EngineEndpoint(object):
             return None
         LOG.info("EngineEndpoint: project_get_session")
         instance_ids = (self.workflow_sessions[session_id].session_data.
-                        instance_ids_by_project(project_id))
+                        state_instance_ids(project_id))
         return {'instance_ids': instance_ids}
 
     def project_update_session(self, ctx, session_id, project_id, data):

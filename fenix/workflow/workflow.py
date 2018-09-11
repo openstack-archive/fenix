@@ -46,6 +46,7 @@ class Project(object):
     def __init__(self, name):
         self.name = name
         self.state = None
+        self.state_instances = []
 
 
 class SessionData(object):
@@ -68,8 +69,7 @@ class SessionData(object):
     def add_instance(self, project, instance_id, instance_name, host,
                      ha=False):
         if host not in self.hosts:
-            LOG.error('%s: instance %s in invalid host ' %
-                      (self.session_id, instance_id, host))
+            LOG.error('instance %s in invalid host ' % instance_id)
         if project not in self.project_names():
             self.projects.append(Project(project))
         self.instances.append(Instance(project, instance_id, instance_name,
@@ -85,6 +85,35 @@ class SessionData(object):
     def set_projets_state(self, state):
         for project in self.projects:
             project.state = state
+            project.state_instances = []
+
+    def project_has_state_instances(self, name):
+        project = self.project(name)
+        if project.state_instances:
+            return True
+        else:
+            return False
+
+    def set_projects_state_and_host_instances(self, state, host):
+        for project in self.projects:
+            project.state = state
+            project.state_instances = (
+                self.instance_ids_by_host_and_project(host, project.name))
+            if project.state_instances:
+                project.state = state
+            else:
+                project.state = None
+
+    def get_projects_with_state(self):
+        return ([project for project in self.projects if project.state
+                is not None])
+
+    def state_instance_ids(self, name):
+        instances = ([project.state_instances for project in self.projects if
+                     project.name == name][0])
+        if not instances:
+            instances = self.instance_ids_by_project(name)
+        return instances
 
     def instances_by_project(self, project):
         return [instance for instance in self.instances if
@@ -93,6 +122,11 @@ class SessionData(object):
     def instance_ids_by_project(self, project):
         return [instance.instance_id for instance in self.instances if
                 instance.project == project]
+
+    def instance_ids_by_host_and_project(self, host, project):
+        return [instance.instance_id for instance in self.instances
+                if instance.host == host
+                and instance.project == project]
 
     def instances_by_host_and_project(self, host, project):
         return [instance for instance in self.instances
