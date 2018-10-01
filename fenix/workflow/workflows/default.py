@@ -550,6 +550,7 @@ class Workflow(BaseWorkflow):
             return
         # TBD it takes time to have proper infromation updated about free
         # capacity. Should make sure instances removed has also VCPUs removed
+        self.update_server_info()
         maintenance_empty_hosts = self.session_data.get_empty_hosts()
 
         if len(maintenance_empty_hosts) == 0:
