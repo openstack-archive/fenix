@@ -181,15 +181,10 @@ class Workflow(BaseWorkflow):
 
         self.notif_admin.info({'some': 'context'}, 'maintenance.host', payload)
 
-    def projects_answer(self, state, projects=None):
+    def projects_answer(self, state, projects):
         state_ack = 'ACK_%s' % state
         state_nack = 'NACK_%s' % state
-        if projects:
-            state_projects = ([p for p in self.session_data.projects if
-                              p.name in projects])
-        else:
-            state_projects = self.session_data.projects
-        for project in state_projects:
+        for project in projects:
             pstate = project.state
             if pstate == state:
                 break
@@ -205,9 +200,13 @@ class Workflow(BaseWorkflow):
                 break
         return pstate
 
-    def wait_projects_state(self, state, timer_name, projects=None):
+    def wait_projects_state(self, state, timer_name):
         state_ack = 'ACK_%s' % state
         state_nack = 'NACK_%s' % state
+        projects = self.session_data.get_projects_with_state()
+        if not projects:
+            LOG.error('%s: wait_projects_state %s. Emtpy project list' %
+                      (self.session_id, state))
         while not self.is_timer_expired(timer_name):
             answer = self.projects_answer(state, projects)
             if answer == state:
@@ -263,7 +262,7 @@ class Workflow(BaseWorkflow):
             metadata = self.session_data.metadata
             self._project_notify(project, instance_ids, allowed_actions,
                                  actions_at, reply_at, state, metadata)
-        self.start_timer(self.conf.project_maintenance_reply,
+        self.start_timer(self.conf.project_scale_in_reply,
                          'SCALE_IN_TIMEOUT')
         return self.wait_projects_state(state, 'SCALE_IN_TIMEOUT')
 
@@ -350,24 +349,16 @@ class Workflow(BaseWorkflow):
         # if instances on this host fits to other hosts
         return host_to_be_empty
 
-    def confirm_host_to_be_emptied(self, host, statebase):
-        state = statebase
+    def confirm_host_to_be_emptied(self, host, state):
         allowed_actions = ['MIGRATE', 'LIVE_MIGRATE', 'OWN_ACTION']
         actions_at = self.reply_time_str(self.conf.project_maintenance_reply)
         reply_at = actions_at
-        self.session_data.set_projets_state(statebase)
-        projects = []
+        self.session_data.set_projects_state_and_host_instances(state, host)
         for project in self.session_data.project_names():
-            instances = (
-                self.session_data.instances_by_host_and_project(host, project))
-            if not instances:
+            if not self.session_data.project_has_state_instances(project):
                 continue
-            projects.append(project)
             LOG.info('%s to project %s' % (state, project))
-            info = "Instances\n"
-            for instance in instances:
-                info += ('%s\n' % instance)
-            LOG.info(info)
+
             instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
                                                         self.session_id,
                                                         project)
@@ -375,9 +366,8 @@ class Workflow(BaseWorkflow):
             self._project_notify(project, instance_ids, allowed_actions,
                                  actions_at, reply_at, state, metadata)
         self.start_timer(self.conf.project_maintenance_reply,
-                         '%s_TIMEOUT' % statebase)
-        return self.wait_projects_state(state, '%s_TIMEOUT' % statebase,
-                                        projects)
+                         '%s_TIMEOUT' % state)
+        return self.wait_projects_state(state, '%s_TIMEOUT' % state)
 
     def confirm_maintenance_complete(self):
         state = 'MAINTENANCE_COMPLETE'
@@ -534,7 +524,7 @@ class Workflow(BaseWorkflow):
                          (self.session_id))
                 self.state = 'PREPARE_MAINTENANCE'
         else:
-            LOG.info('Empty host found %')
+            LOG.info('Empty host found')
             self.state = 'START_MAINTENANCE'
 
         maint_at = self.str_to_datetime(
@@ -572,9 +562,8 @@ class Workflow(BaseWorkflow):
                          (self.session_id))
                 self.state = 'PREPARE_MAINTENANCE'
         else:
-            LOG.info('Empty host found %')
+            LOG.info('Empty host found')
             self.state = 'START_MAINTENANCE'
-        self.update_server_info()
 
     def prepare_maintenance(self):
         LOG.info("%s: prepare_maintenance called" % self.session_id)
