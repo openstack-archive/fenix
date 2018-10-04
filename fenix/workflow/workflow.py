@@ -12,11 +12,15 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
+import aodhclient.client as aodhclient
 from oslo_log import log as logging
+import oslo_messaging as messaging
 from oslo_service import threadgroup
 from threading import Thread
 import time
+
+from fenix.utils.identity_auth import get_identity_auth
+from fenix.utils.identity_auth import get_session
 
 
 LOG = logging.getLogger(__name__)
@@ -175,6 +179,23 @@ class BaseWorkflow(Thread):
                                'MAINTENANCE_COMPLETE': 'maintenance_complete',
                                'MAINTENANCE_DONE': 'maintenance_done',
                                'FAILED': 'maintenance_failed'}
+        self.url = "http://%s:%s" % (conf.host, conf.port)
+        self.auth = get_identity_auth(conf.workflow_user,
+                                      conf.workflow_password,
+                                      conf.workflow_project)
+        self.session = get_session(auth=self.auth)
+        self.aodh = aodhclient.Client('2', self.session)
+        transport = messaging.get_transport(self.conf)
+        self.notif_proj = messaging.Notifier(transport,
+                                             'maintenance.planned',
+                                             driver='messaging',
+                                             topics=['notifications'])
+        self.notif_proj = self.notif_proj.prepare(publisher_id='fenix')
+        self.notif_admin = messaging.Notifier(transport,
+                                              'maintenance.host',
+                                              driver='messaging',
+                                              topics=['notifications'])
+        self.notif_admin = self.notif_admin.prepare(publisher_id='fenix')
 
     def _timer_expired(self, name):
         LOG.info("%s: timer expired %s" % (self.session_id, name))
@@ -230,3 +251,91 @@ class BaseWorkflow(Thread):
                 time.sleep(1)
                 # IDLE while session removed
         LOG.info("%s: done" % self.session_id)
+
+    def projects_listen_alarm(self, match_event):
+        match_projects = ([str(alarm['project_id']) for alarm in
+                          self.aodh.alarm.list() if
+                          str(alarm['event_rule']['event_type']) ==
+                          match_event])
+        all_projects_match = True
+        for project in self.session_data.project_names():
+            if project not in match_projects:
+                LOG.error('%s: project %s not '
+                          'listening to %s' %
+                          (self.session_id, project, match_event))
+                all_projects_match = False
+        return all_projects_match
+
+    def _project_notify(self, project_id, instance_ids, allowed_actions,
+                        actions_at, reply_at, state, metadata):
+        reply_url = '%s/v1/maintenance/%s/%s' % (self.url,
+                                                 self.session_id,
+                                                 project_id)
+
+        payload = dict(project_id=project_id,
+                       instance_ids=instance_ids,
+                       allowed_actions=allowed_actions,
+                       state=state,
+                       actions_at=actions_at,
+                       reply_at=reply_at,
+                       session_id=self.session_id,
+                       metadata=metadata,
+                       reply_url=reply_url)
+
+        LOG.info('Sending "maintenance.planned" to project: %s' % payload)
+
+        self.notif_proj.info({'some': 'context'}, 'maintenance.scheduled',
+                             payload)
+
+    def _admin_notify(self, project, host, state, session_id):
+        payload = dict(project_id=project, host=host, state=state,
+                       session_id=session_id)
+
+        LOG.info('Sending "maintenance.host": %s' % payload)
+
+        self.notif_admin.info({'some': 'context'}, 'maintenance.host', payload)
+
+    def projects_answer(self, state, projects):
+        state_ack = 'ACK_%s' % state
+        state_nack = 'NACK_%s' % state
+        for project in projects:
+            pstate = project.state
+            if pstate == state:
+                break
+            elif pstate == state_ack:
+                continue
+            elif pstate == state_nack:
+                LOG.error('%s: %s from %s' %
+                          (self.session_id, pstate, project.name))
+                break
+            else:
+                LOG.error('%s: Project %s in invalid state %s' %
+                          (self.session_id, project.name, pstate))
+                break
+        return pstate
+
+    def wait_projects_state(self, state, timer_name):
+        state_ack = 'ACK_%s' % state
+        state_nack = 'NACK_%s' % state
+        projects = self.session_data.get_projects_with_state()
+        if not projects:
+            LOG.error('%s: wait_projects_state %s. Emtpy project list' %
+                      (self.session_id, state))
+        while not self.is_timer_expired(timer_name):
+            answer = self.projects_answer(state, projects)
+            if answer == state:
+                pass
+            else:
+                self.stop_timer(timer_name)
+                if answer == state_ack:
+                    LOG.info('all projects in: %s' % state_ack)
+                    return True
+                elif answer == state_nack:
+                    return False
+                else:
+                    return False
+            time.sleep(1)
+        LOG.error('%s: timer %s expired waiting answer to state %s' %
+                  (self.session_id, timer_name, state))
+        LOG.error('%s: project states' % self.session_id)
+        return False
