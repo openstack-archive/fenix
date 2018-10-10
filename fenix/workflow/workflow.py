@@ -178,7 +178,7 @@ class BaseWorkflow(Thread):
                                'PLANNED_MAINTENANCE': 'planned_maintenance',
                                'MAINTENANCE_COMPLETE': 'maintenance_complete',
                                'MAINTENANCE_DONE': 'maintenance_done',
-                               'FAILED': 'maintenance_failed'}
+                               'MAINTENANCE_FAILED': 'maintenance_failed'}
         self.url = "http://%s:%s" % (conf.host, conf.port)
         self.auth = get_identity_auth(conf.workflow_user,
                                       conf.workflow_password,
@@ -244,9 +244,14 @@ class BaseWorkflow(Thread):
     def run(self):
         LOG.info("%s: started" % self.session_id)
         while not self.stopped:
-            if self.state != "MAINTENANCE_DONE" and self.state != "FAILED":
-                statefunc = getattr(self, self.states_methods[self.state])
-                statefunc()
+            if self.state != "MAINTENANCE_DONE" and self.state != "MAINTENANCE_FAILED":
+                try:
+                    statefunc = getattr(self, self.states_methods[self.state])
+                    statefunc()
+                except Exception as e:
+                    LOG.error("%s: %s Raised exception: %s" % (self.session_id,
+                              statefunc, e), exc_info=True)
+                    self.state = "MAINTENANCE_FAILED"
             else:
                 time.sleep(1)
                 # IDLE while session removed
