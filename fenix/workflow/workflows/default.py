@@ -106,9 +106,10 @@ class Workflow(BaseWorkflow):
                                                         project)
             reply_at = reply_time_str(self.conf.project_maintenance_reply)
             if is_time_after_time(reply_at, actions_at):
-                raise Exception('%s: No time for project to'
-                                ' answer in state: %s' %
-                                (self.session_id, state))
+                LOG.error('%s: No time for project to answer in state: %s' %
+                          (self.session_id, state))
+                self.state = "MAINTENANCE_FAILED"
+                return False
             metadata = self.session_data.metadata
             self._project_notify(project, instance_ids, allowed_actions,
                                  actions_at, reply_at, state, metadata)
@@ -141,9 +142,11 @@ class Workflow(BaseWorkflow):
         prev_hostname = ''
         LOG.info('checking hypervisors for VCPU capacity')
         for hvisor in hvisors:
+            hostname = hvisor.__getattr__('hypervisor_hostname')
+            if hostname not in self.session_data.hosts:
+                continue
             vcpus = hvisor.__getattr__('vcpus')
             vcpus_used = hvisor.__getattr__('vcpus_used')
-            hostname = hvisor.__getattr__('hypervisor_hostname')
             if prev_vcpus != 0 and prev_vcpus != vcpus:
                 raise Exception('%s: %d vcpus on %s does not match to'
                                 '%d on %s'
@@ -315,7 +318,7 @@ class Workflow(BaseWorkflow):
         vm_state = server.__dict__.get('OS-EXT-STS:vm_state')
         LOG.info('server %s state %s' % (server_id, vm_state))
         last_vm_state = vm_state
-        retry_migrate = 5
+        retry_migrate = 2
         while True:
             try:
                 server.migrate()
@@ -345,13 +348,16 @@ class Workflow(BaseWorkflow):
 
             except BadRequest:
                 if retry_migrate == 0:
-                    raise Exception('server %s migrate failed' % server_id)
+                    LOG.error('server %s migrate failed after retries' %
+                              server_id)
+                    return False
                 # Might take time for scheduler to sync inconsistent instance
                 # list for host
-                retry_time = 180 - (retry_migrate * 30)
+                # TBD Retry doesn't help, need investigating if reproduces
+                retry_timeout = 150 - (retry_migrate * 60)
                 LOG.info('server %s migrate failed, retry in %s sec'
-                         % (server_id, retry_time))
-                time.sleep(retry_time)
+                         % (server_id, retry_timeout))
+                time.sleep(retry_timeout)
             except Exception as e:
                 LOG.error('server %s migration failed, Exception=%s' %
                           (server_id, e))
@@ -373,11 +379,11 @@ class Workflow(BaseWorkflow):
         self.initialize_server_info()
 
         if not self.projects_listen_alarm('maintenance.scheduled'):
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
 
         if not self.confirm_maintenance():
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
 
         maintenance_empty_hosts = self.session_data.get_empty_hosts()
@@ -412,7 +418,7 @@ class Workflow(BaseWorkflow):
         LOG.info("%s: scale in" % self.session_id)
 
         if not self.confirm_scale_in():
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
         # TBD it takes time to have proper infromation updated about free
         # capacity. Should make sure instances removed has also VCPUs removed
@@ -436,7 +442,7 @@ class Workflow(BaseWorkflow):
         LOG.info("%s: prepare_maintenance called" % self.session_id)
         host = self.find_host_to_be_empty()
         if not self.confirm_host_to_be_emptied(host, 'PREPARE_MAINTENANCE'):
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
         if not self.actions_to_have_empty_host(host):
             # TBD we found the hard way that we couldn't make host empty and
@@ -455,7 +461,7 @@ class Workflow(BaseWorkflow):
         empty_hosts = self.session_data.get_empty_hosts()
         if not empty_hosts:
             LOG.info("%s: No empty host to be maintained" % self.session_id)
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
         maintained_hosts = self.session_data.maintained_hosts
         if not maintained_hosts:
@@ -508,13 +514,13 @@ class Workflow(BaseWorkflow):
                                                    not_maintained_hosts))
         host = not_maintained_hosts[0]
         if not self.confirm_host_to_be_emptied(host, 'PLANNED_MAINTENANCE'):
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
         if not self.actions_to_have_empty_host(host):
             # Failure in here might indicate action to move instance failed.
             # This might be as Nova VCPU capacity was not yet emptied from
             # expected target hosts
-            self.state = 'FAILED'
+            self.state = 'MAINTENANCE_FAILED'
             return
         self.update_server_info()
         self.state = 'START_MAINTENANCE'
@@ -523,7 +529,9 @@ class Workflow(BaseWorkflow):
         LOG.info("%s: maintenance_complete called" % self.session_id)
         LOG.info('Projects may still need to up scale back to full '
                  'capcity')
-        self.confirm_maintenance_complete()
+        if not self.confirm_maintenance_complete():
+            self.state = 'MAINTENANCE_FAILED'
+            return
         self.update_server_info()
         self.state = 'MAINTENANCE_DONE'
 
