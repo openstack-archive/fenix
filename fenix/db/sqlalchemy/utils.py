@@ -12,29 +12,13 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-import eventlet
-eventlet.monkey_patch()
-
 import sys
 
-from oslo_config import cfg
-from oslo_service import service
+from fenix.db.sqlalchemy import facade_wrapper
 
-from fenix.db import api as db_api
-from fenix.engine import service as engine_service
-from fenix.utils import service as service_utils
+get_session = facade_wrapper.get_session
 
 
-def main():
-    cfg.CONF(project='fenix', prog='fenix-engine')
-    service_utils.prepare_service(sys.argv)
-    db_api.setup_db()
-    service.launch(
-        cfg.CONF,
-        engine_service.EngineService()
-    ).wait()
-
-
-if __name__ == '__main__':
-    main()
+def get_backend():
+    """The backend is this module itself."""
+    return sys.modules[__name__]
