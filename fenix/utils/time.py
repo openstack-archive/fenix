@@ -22,6 +22,10 @@ def str_to_datetime(dt_str):
     return datetime.datetime(year, month, day, hours, minutes, seconds)
 
 
+def datetime_to_str(dt):
+    return (dt.strftime('%Y-%m-%d %H:%M:%S'))
+
+
 def reply_time_str(wait):
     now = datetime.datetime.utcnow()
     reply = now - datetime.timedelta(
