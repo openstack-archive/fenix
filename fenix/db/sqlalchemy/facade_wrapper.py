@@ -1,4 +1,4 @@
-# Copyright (c) 2018 OpenStack Foundation.
+# Copyright 2014 Intel Corporation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,28 +13,31 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import eventlet
-eventlet.monkey_patch()
-
-import sys
-
 from oslo_config import cfg
-from oslo_service import service
-
-from fenix.db import api as db_api
-from fenix.engine import service as engine_service
-from fenix.utils import service as service_utils
+from oslo_db.sqlalchemy import session as db_session
 
 
-def main():
-    cfg.CONF(project='fenix', prog='fenix-engine')
-    service_utils.prepare_service(sys.argv)
-    db_api.setup_db()
-    service.launch(
-        cfg.CONF,
-        engine_service.EngineService()
-    ).wait()
+CONF = cfg.CONF
+
+_engine_facade = None
 
 
-if __name__ == '__main__':
-    main()
+def get_session():
+    return _get_facade().get_session()
+
+
+def get_engine():
+    return _get_facade().get_engine()
+
+
+def _clear_engine():
+    global _engine_facade
+    _engine_facade = None
+
+
+def _get_facade():
+    global _engine_facade
+    if not _engine_facade:
+        _engine_facade = db_session.EngineFacade.from_config(CONF)
+
+    return _engine_facade
