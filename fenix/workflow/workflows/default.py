@@ -19,9 +19,9 @@ from novaclient.exceptions import BadRequest
 from oslo_log import log as logging
 import time
 
+from fenix.utils.time import datetime_to_str
 from fenix.utils.time import is_time_after_time
 from fenix.utils.time import reply_time_str
-from fenix.utils.time import str_to_datetime
 from fenix.utils.time import time_now_str
 
 
@@ -34,15 +34,29 @@ class Workflow(BaseWorkflow):
 
     def __init__(self, conf, session_id, data):
         super(Workflow, self).__init__(conf, session_id, data)
-        self.nova = novaclient.Client(version='2.34', session=self.session)
+        self.nova = novaclient.Client(version='2.34',
+                                      session=self.auth_session)
+        self._init_update_hosts()
         LOG.info("%s: initialized" % self.session_id)
 
-    def cleanup(self):
-        LOG.info("%s: cleanup" % self.session_id)
-
-    def stop(self):
-        LOG.info("%s: stop" % self.session_id)
-        self.stopped = True
+    def _init_update_hosts(self):
+        controllers = self.nova.services.list(binary='nova-conductor')
+        computes = self.nova.services.list(binary='nova-compute')
+        for host in self.hosts:
+            hostname = host.hostname
+            match = [compute for compute in computes if
+                     hostname == compute.host]
+            if match:
+                host.type = 'compute'
+                if match[0].status == 'disabled':
+                    LOG.info("compute status from services")
+                    host.disabled = True
+                continue
+            if ([controller for controller in controllers if
+                 hostname == controller.host]):
+                host.type = 'controller'
+                continue
+            host.type = 'other'
 
     def is_ha_instance(self, instance):
         network_interfaces = next(iter(instance.addresses.values()))
@@ -55,6 +69,7 @@ class Workflow(BaseWorkflow):
         return False
 
     def initialize_server_info(self):
+        project_ids = []
         opts = {'all_tenants': True}
         servers = self.nova.servers.list(detailed=True, search_opts=opts)
         for server in servers:
@@ -66,18 +81,21 @@ class Workflow(BaseWorkflow):
                 ha = self.is_ha_instance(server)
             except Exception:
                 raise Exception('can not get params from server=%s' % server)
-            self.session_data.add_instance(project,
-                                           instance_id,
-                                           instance_name,
-                                           host,
-                                           ha)
-        LOG.info(str(self.session_data))
+            self.add_instance(project,
+                              instance_id,
+                              instance_name,
+                              host,
+                              ha)
+            if project not in project_ids:
+                project_ids.append(project)
+        self.projects = self.init_projects(project_ids)
+        LOG.info(str(self))
 
     def update_server_info(self):
         opts = {'all_tenants': True}
         servers = self.nova.servers.list(detailed=True, search_opts=opts)
         # TBD actually update, not regenerate
-        self.session_data.instances = []
+        self.instances = []
         for server in servers:
             try:
                 host = str(server.__dict__.get('OS-EXT-SRV-ATTR:host'))
@@ -87,19 +105,19 @@ class Workflow(BaseWorkflow):
                 ha = self.is_ha_instance(server)
             except Exception:
                 raise Exception('can not get params from server=%s' % server)
-            self.session_data.add_instance(project,
-                                           instance_id,
-                                           instance_name,
-                                           host,
-                                           ha)
-        LOG.info(str(self.session_data))
+            self.add_instance(project,
+                              instance_id,
+                              instance_name,
+                              host,
+                              ha)
+        LOG.info(str(self))
 
     def confirm_maintenance(self):
         allowed_actions = []
-        actions_at = self.session_data.maintenance_at
+        actions_at = self.session.maintenance_at
         state = 'MAINTENANCE'
-        self.session_data.set_projets_state(state)
-        for project in self.session_data.project_names():
+        self.set_projets_state(state)
+        for project in self.project_names():
             LOG.info('\nMAINTENANCE to project %s\n' % project)
             instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
                                                         self.session_id,
@@ -108,9 +126,9 @@ class Workflow(BaseWorkflow):
             if is_time_after_time(reply_at, actions_at):
                 LOG.error('%s: No time for project to answer in state: %s' %
                           (self.session_id, state))
-                self.state = "MAINTENANCE_FAILED"
+                self.session.state = "MAINTENANCE_FAILED"
                 return False
-            metadata = self.session_data.metadata
+            metadata = self.session.meta
             self._project_notify(project, instance_ids, allowed_actions,
                                  actions_at, reply_at, state, metadata)
         self.start_timer(self.conf.project_maintenance_reply,
@@ -122,13 +140,13 @@ class Workflow(BaseWorkflow):
         actions_at = reply_time_str(self.conf.project_scale_in_reply)
         reply_at = actions_at
         state = 'SCALE_IN'
-        self.session_data.set_projets_state(state)
-        for project in self.session_data.project_names():
+        self.set_projets_state(state)
+        for project in self.project_names():
             LOG.info('\nSCALE_IN to project %s\n' % project)
             instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
                                                         self.session_id,
                                                         project)
-            metadata = self.session_data.metadata
+            metadata = self.session.meta
             self._project_notify(project, instance_ids, allowed_actions,
                                  actions_at, reply_at, state, metadata)
         self.start_timer(self.conf.project_scale_in_reply,
@@ -143,7 +161,7 @@ class Workflow(BaseWorkflow):
         LOG.info('checking hypervisors for VCPU capacity')
         for hvisor in hvisors:
             hostname = hvisor.__getattr__('hypervisor_hostname')
-            if hostname not in self.session_data.hosts:
+            if hostname not in self.get_compute_hosts():
                 continue
             vcpus = hvisor.__getattr__('vcpus')
             vcpus_used = hvisor.__getattr__('vcpus_used')
@@ -176,14 +194,13 @@ class Workflow(BaseWorkflow):
         host_nonha_instances = 0
         host_free_vcpus = 0
         hvisors = self.nova.hypervisors.list(detailed=True)
-        for host in self.session_data.hosts:
+        for host in self.get_compute_hosts():
             free_vcpus = self.get_free_vcpus_by_host(host, hvisors)
             ha_instances = 0
             nonha_instances = 0
-            for project in self.session_data.project_names():
-                for instance in (
-                    self.session_data.instances_by_host_and_project(host,
-                                                                    project)):
+            for project in self.project_names():
+                for instance in (self.instances_by_host_and_project(host,
+                                 project)):
                     if instance.ha:
                         ha_instances += 1
                     else:
@@ -224,16 +241,16 @@ class Workflow(BaseWorkflow):
         allowed_actions = ['MIGRATE', 'LIVE_MIGRATE', 'OWN_ACTION']
         actions_at = reply_time_str(self.conf.project_maintenance_reply)
         reply_at = actions_at
-        self.session_data.set_projects_state_and_host_instances(state, host)
-        for project in self.session_data.project_names():
-            if not self.session_data.project_has_state_instances(project):
+        self.set_projects_state_and_hosts_instances(state, [host])
+        for project in self.project_names():
+            if not self.project_has_state_instances(project):
                 continue
             LOG.info('%s to project %s' % (state, project))
 
             instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
                                                         self.session_id,
                                                         project)
-            metadata = self.session_data.metadata
+            metadata = self.session.meta
             self._project_notify(project, instance_ids, allowed_actions,
                                  actions_at, reply_at, state, metadata)
         self.start_timer(self.conf.project_maintenance_reply,
@@ -242,11 +259,11 @@ class Workflow(BaseWorkflow):
 
     def confirm_maintenance_complete(self):
         state = 'MAINTENANCE_COMPLETE'
-        metadata = self.session_data.metadata
+        metadata = self.session.meta
         actions_at = reply_time_str(self.conf.project_scale_in_reply)
         reply_at = actions_at
-        self.session_data.set_projets_state(state)
-        for project in self.session_data.project_names():
+        self.set_projets_state(state)
+        for project in self.project_names():
             LOG.info('%s to project %s' % (state, project))
             instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
                                                         self.session_id,
@@ -264,17 +281,17 @@ class Workflow(BaseWorkflow):
         actions_at = None
         reply_at = None
         state = "INSTANCE_ACTION_DONE"
-        metadata = None
+        metadata = "{}"
         self._project_notify(project, instance_ids, allowed_actions,
                              actions_at, reply_at, state, metadata)
 
     def actions_to_have_empty_host(self, host):
         # TBD these might be done parallel
-        for project in self.session_data.proj_instance_actions.keys():
+        for project in self.proj_instance_actions.keys():
             instances = (
-                self.session_data.instances_by_host_and_project(host, project))
+                self.instances_by_host_and_project(host, project))
             for instance in instances:
-                action = (self.session_data.instance_action_by_project_reply(
+                action = (self.instance_action_by_project_reply(
                           project, instance.instance_id))
                 LOG.info('Action %s instance %s ' % (action,
                                                      instance.instance_id))
@@ -379,34 +396,33 @@ class Workflow(BaseWorkflow):
         self.initialize_server_info()
 
         if not self.projects_listen_alarm('maintenance.scheduled'):
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
 
         if not self.confirm_maintenance():
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
 
-        maintenance_empty_hosts = self.session_data.get_empty_hosts()
+        maintenance_empty_hosts = self.get_empty_computes()
 
         if len(maintenance_empty_hosts) == 0:
             if self.need_scale_in():
                 LOG.info('%s: Need to scale in to get capacity for '
                          'empty host' % (self.session_id))
-                self.state = 'SCALE_IN'
+                self.session.state = 'SCALE_IN'
             else:
                 LOG.info('%s: Free capacity, but need empty host' %
                          (self.session_id))
-                self.state = 'PREPARE_MAINTENANCE'
+                self.session.state = 'PREPARE_MAINTENANCE'
         else:
             LOG.info('Empty host found')
-            self.state = 'START_MAINTENANCE'
+            self.session.state = 'START_MAINTENANCE'
 
-        maint_at = str_to_datetime(self.session_data.maintenance_at)
-        if maint_at > datetime.datetime.utcnow():
+        if self.session.maintenance_at > datetime.datetime.utcnow():
             time_now = time_now_str()
             LOG.info('Time now: %s maintenance starts: %s....' %
-                     (time_now, self.session_data.maintenance_at))
-            td = maint_at - datetime.datetime.utcnow()
+                     (time_now, datetime_to_str(self.session.maintenance_at)))
+            td = self.session.maintenance_at - datetime.datetime.utcnow()
             self.start_timer(td.total_seconds(), 'MAINTENANCE_START_TIMEOUT')
             while not self.is_timer_expired('MAINTENANCE_START_TIMEOUT'):
                 time.sleep(1)
@@ -418,31 +434,31 @@ class Workflow(BaseWorkflow):
         LOG.info("%s: scale in" % self.session_id)
 
         if not self.confirm_scale_in():
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
         # TBD it takes time to have proper infromation updated about free
         # capacity. Should make sure instances removed has also VCPUs removed
         self.update_server_info()
-        maintenance_empty_hosts = self.session_data.get_empty_hosts()
+        maintenance_empty_hosts = self.get_empty_computes()
 
         if len(maintenance_empty_hosts) == 0:
             if self.need_scale_in():
                 LOG.info('%s: Need to scale in more to get capacity for '
                          'empty host' % (self.session_id))
-                self.state = 'SCALE_IN'
+                self.session.state = 'SCALE_IN'
             else:
                 LOG.info('%s: Free capacity, but need empty host' %
                          (self.session_id))
-                self.state = 'PREPARE_MAINTENANCE'
+                self.session.state = 'PREPARE_MAINTENANCE'
         else:
             LOG.info('Empty host found')
-            self.state = 'START_MAINTENANCE'
+            self.session.state = 'START_MAINTENANCE'
 
     def prepare_maintenance(self):
         LOG.info("%s: prepare_maintenance called" % self.session_id)
         host = self.find_host_to_be_empty()
         if not self.confirm_host_to_be_emptied(host, 'PREPARE_MAINTENANCE'):
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
         if not self.actions_to_have_empty_host(host):
             # TBD we found the hard way that we couldn't make host empty and
@@ -451,19 +467,19 @@ class Workflow(BaseWorkflow):
             # what instance on which host
             LOG.info('%s: Failed to empty %s. Need to scale in more to get '
                      'capacity for empty host' % (self.session_id, host))
-            self.state = 'SCALE_IN'
+            self.session.state = 'SCALE_IN'
         else:
-            self.state = 'START_MAINTENANCE'
+            self.session.state = 'START_MAINTENANCE'
         self.update_server_info()
 
     def start_maintenance(self):
         LOG.info("%s: start_maintenance called" % self.session_id)
-        empty_hosts = self.session_data.get_empty_hosts()
+        empty_hosts = self.get_empty_computes()
         if not empty_hosts:
             LOG.info("%s: No empty host to be maintained" % self.session_id)
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
-        maintained_hosts = self.session_data.maintained_hosts
+        maintained_hosts = self.get_maintained_hosts()
         if not maintained_hosts:
             # First we maintain all empty hosts
             for host in empty_hosts:
@@ -481,7 +497,7 @@ class Workflow(BaseWorkflow):
                                    'MAINTENANCE_COMPLETE',
                                    self.session_id)
                 LOG.info('MAINTENANCE_COMPLETE host %s' % host)
-                maintained_hosts.append(host)
+                self.host_maintained(host)
         else:
             # Now we maintain hosts gone trough PLANNED_MAINTENANCE
             hosts = [h for h in empty_hosts if h not in maintained_hosts]
@@ -498,42 +514,44 @@ class Workflow(BaseWorkflow):
                                    'MAINTENANCE_COMPLETE',
                                    self.session_id)
                 LOG.info('MAINTENANCE_COMPLETE host %s' % host)
-                maintained_hosts.append(host)
-        if [h for h in self.session_data.hosts if h not in maintained_hosts]:
+
+                self.host_maintained(host)
+        maintained_hosts = self.get_maintained_hosts()
+        if len(maintained_hosts) != len(self.hosts):
             # Not all host maintained
-            self.state = 'PLANNED_MAINTENANCE'
+            self.session.state = 'PLANNED_MAINTENANCE'
         else:
-            self.state = 'MAINTENANCE_COMPLETE'
+            self.session.state = 'MAINTENANCE_COMPLETE'
 
     def planned_maintenance(self):
         LOG.info("%s: planned_maintenance called" % self.session_id)
-        maintained_hosts = self.session_data.maintained_hosts
-        not_maintained_hosts = ([h for h in self.session_data.hosts if h not in
-                                maintained_hosts])
+        maintained_hosts = self.get_maintained_hosts()
+        not_maintained_hosts = ([h.hostname for h in self.hosts if h.hostname
+                                 not in maintained_hosts])
         LOG.info("%s: Not maintained hosts: %s" % (self.session_id,
                                                    not_maintained_hosts))
         host = not_maintained_hosts[0]
         if not self.confirm_host_to_be_emptied(host, 'PLANNED_MAINTENANCE'):
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
         if not self.actions_to_have_empty_host(host):
             # Failure in here might indicate action to move instance failed.
             # This might be as Nova VCPU capacity was not yet emptied from
             # expected target hosts
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
         self.update_server_info()
-        self.state = 'START_MAINTENANCE'
+        self.session.state = 'START_MAINTENANCE'
 
     def maintenance_complete(self):
         LOG.info("%s: maintenance_complete called" % self.session_id)
         LOG.info('Projects may still need to up scale back to full '
                  'capcity')
         if not self.confirm_maintenance_complete():
-            self.state = 'MAINTENANCE_FAILED'
+            self.session.state = 'MAINTENANCE_FAILED'
             return
         self.update_server_info()
-        self.state = 'MAINTENANCE_DONE'
+        self.session.state = 'MAINTENANCE_DONE'
 
     def maintenance_done(self):
         pass
