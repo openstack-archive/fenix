@@ -114,7 +114,7 @@ class EngineEndpoint(object):
             return None
         LOG.info("EngineEndpoint: admin_get_session")
         return ({'session_id': session_id, 'state':
-                self.workflow_sessions[session_id].state})
+                self.workflow_sessions[session_id].session.state})
 
     def admin_delete_session(self, ctx, session_id):
         """Delete maintenance workflow session thread"""
@@ -134,18 +134,18 @@ class EngineEndpoint(object):
         if not self._validate_session(session_id):
             return None
         LOG.info("EngineEndpoint: project_get_session")
-        instance_ids = (self.workflow_sessions[session_id].session_data.
+        instance_ids = (self.workflow_sessions[session_id].
                         state_instance_ids(project_id))
         return {'instance_ids': instance_ids}
 
     def project_update_session(self, ctx, session_id, project_id, data):
         """Update maintenance workflow session project state"""
         LOG.info("EngineEndpoint: project_update_session")
-        session_data = self.workflow_sessions[session_id].session_data
-        project = session_data.project(project_id)
+        session_obj = self.workflow_sessions[session_id]
+        project = session_obj.project(project_id)
         project.state = data["state"]
         if 'instance_actions' in data:
-            session_data.proj_instance_actions[project_id] = (
+            session_obj.proj_instance_actions[project_id] = (
                 data['instance_actions'].copy())
         return data
 
