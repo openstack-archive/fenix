@@ -17,6 +17,7 @@ Contents:
    library/index
    contributor/index
    configuration/index
+   api/index
    cli/index
    user/index
    admin/index
