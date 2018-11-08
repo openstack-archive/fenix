@@ -18,6 +18,7 @@ Contents:
    contributor/index
    configuration/index
    api/index
+   notification/index
    cli/index
    user/index
    admin/index
