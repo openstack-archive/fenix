@@ -1,4 +1,31 @@
 #############################################################################
+# Variables in header                                                       #
+#############################################################################
+
+#############################################################################
+# Variables in path                                                         #
+#############################################################################
+
+session_id:
+  description: |
+    Session ID
+  in: path
+  required: false
+  type: string
+  min_version: \> 1
+
+uuid-path:
+  description: |
+    uuid
+  in: path
+  required: true
+  type: string
+
+#############################################################################
+# Variables in query                                                        #
+#############################################################################
+
+#############################################################################
 # Variables in body                                                         #
 #############################################################################
 action-plugin-name:
@@ -36,9 +63,23 @@ execution-order:
   type: integer
   min_version: \> 1
 
-hosts:  
+hosts:
   description: |
     Unique name of the host.
+  in: body
+  required: true
+  type: list of strings
+
+instance-actions:
+  description: |
+    instance ID : action string
+  in: body
+  required: true
+  type: dictionary
+
+instance-ids:
+  description: |
+    List of instance IDs.
   in: body
   required: true
   type: list of strings
@@ -81,7 +122,7 @@ upgrade-list:
   type: list of dictionaries
   min_version: \> 1
 
-uuid: 
+uuid:
   description: |
     uuid
   in: body
@@ -102,17 +143,12 @@ workflow-state:
   required: true
   type: string
 
-
-
-
-#############################################################################
-# Variables in header                                                       #
-#############################################################################
-
-#############################################################################
-# Variables in path                                                         #
-#############################################################################
-
-#############################################################################
-# Variables in query                                                        #
-#############################################################################
+workflow-state-reply:
+  description: |
+    There can have different values depending on what is the maintenance
+    session state to reply to. In the below example, the maintenance state is
+    'PLANNED_MAINTENANCE' and the reply state is formed by adding 'ACK\_' or
+    'NACK\_' as the prefix to reply value.
+  in: body
+  required: true
+  type: string
