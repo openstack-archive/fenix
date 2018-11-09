@@ -55,3 +55,64 @@ Response codes
 
     - 404
 
+Update maintenance session
+==========================
+
+.. rest_method:: POST /v1/{session_id}
+
+--Not yet implemented--
+
+Update existing maintenance session. This can be used to continue a failed
+session.
+
+Request
+-------
+
+.. rest_parameters:: parameters.yaml
+
+    - session_id: session_id
+
+Get maintenance sessions
+========================
+
+.. rest_method:: GET /v1/maintenance
+
+Get all ongoing maintenance sessions.
+
+Response codes
+--------------
+
+.. rest_status_code:: success status.yaml
+
+    - 200: maintenance-get
+
+.. rest_status_code:: error status.yaml
+
+    - 404
+
+Get maintenance session
+=======================
+
+.. rest_method:: GET /v1/maintenance/{session_id}
+
+Get a maintenance session state.
+
+Request
+-------
+
+.. rest_parameters:: parameters.yaml
+
+    - session_id: session_id
+
+Response codes
+--------------
+
+.. rest_status_code:: success status.yaml
+
+    - 200: maintenance-session-get
+
+.. rest_status_code:: error status.yaml
+
+    - 404
+
+

@@ -11,6 +11,22 @@
     .. literalinclude:: samples/create-maintenance-session-post-200.json
       :language: javascript
 
+  maintenance-get: |
+    .. rest_parameters:: parameters.yaml
+      
+      - session_id: uuid
+    
+    .. literalinclude:: samples/create-maintenance-session-get-200.json
+      :language: javascript
+
+  maintenance-session-get: |
+    .. rest_parameters:: parameters.yaml
+
+      - state: workflow-state
+    
+    .. literalinclude:: samples/get-maintenance-session-200.json
+      :language: javascript
+    
 201:
   default: |
     Request has been fulfilled and new resource created.
