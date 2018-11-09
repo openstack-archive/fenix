@@ -1,0 +1,161 @@
+#############################################################################
+# Variables in header                                                       #
+#############################################################################
+
+#############################################################################
+# Variables in path                                                         #
+#############################################################################
+
+session_id:
+  description: |
+    Session ID
+  in: path
+  required: false
+  type: string
+  min_version: \> 1
+
+uuid-path:
+  description: |
+    uuid
+  in: path
+  required: true
+  type: string
+
+#############################################################################
+# Variables in query                                                        #
+#############################################################################
+
+#############################################################################
+# Variables in body                                                         #
+#############################################################################
+action-plugin-name:
+  description: |
+    plug-in name.
+  in: body
+  required: true
+  type: string
+  min_version: \> 1
+
+action-plugin-type:
+  description: |
+    Type of the action plugin. Possible values are:
+      * pre: TODO: add explanation
+      * post: TODO: add explanation
+      * host: TODO: add explanation
+  in: body
+  required: true
+  type: integer
+  min_version: \> 1
+
+action-plugins:
+  description: |
+    List of action plug-ins.
+  in: body
+  required: true
+  type: list of dictionaries
+  min_version: \> 1
+
+execution-order:
+  description: |
+    Numeric execution order by type.
+  in: body
+  required: true
+  type: integer
+  min_version: \> 1
+
+hosts:
+  description: |
+    Unique name of the host.
+  in: body
+  required: true
+  type: list of strings
+
+instance-actions:
+  description: |
+    instance ID : action string
+  in: body
+  required: true
+  type: dictionary
+
+instance-ids:
+  description: |
+    List of instance IDs.
+  in: body
+  required: true
+  type: list of strings
+
+maintenance-workflow-start-time:
+  description: |
+    Maintenance workflow start time.
+  in: body
+  required: true
+  type: string
+
+metadata:
+  description: |
+    Metadata; like hints to projects
+  in: body
+  required: true
+  type: dictionary
+
+package-size:
+  description: |
+    Size of the package
+  in: body
+  required: false
+  type: string
+  min_version: \> 1
+
+package-url:
+  description: |
+    URL to SW package
+  in: body
+  required: false
+  type: string
+  min_version: \> 1
+
+upgrade-list:
+  description: |
+    List of needed SW upgrades
+  in: body
+  required: false
+  type: list of dictionaries
+  min_version: \> 1
+
+uuid:
+  description: |
+    uuid
+  in: body
+  required: true
+  type: string
+
+uuid-list:
+  description: |
+    List of uuid-s.
+  in: body
+  required: true
+  type: string
+
+workflow-name:
+  description: |
+    Name of the maintenance workflow to be used.
+  in: body
+  required: true
+  type: string
+
+workflow-state:
+  description: |
+    Maintenance workflow state.
+  in: body
+  required: true
+  type: string
+
+workflow-state-reply:
+  description: |
+    There can have different values depending on what is the maintenance
+    session state to reply to. In the below example, the maintenance state is
+    'PLANNED_MAINTENANCE' and the reply state is formed by adding 'ACK\_' or
+    'NACK\_' as the prefix to reply value.
+  in: body
+  required: true
+  type: string
