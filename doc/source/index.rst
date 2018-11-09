@@ -24,6 +24,14 @@ Contents:
    admin/index
    reference/index
 
+Experimental API documentation
+==============================
+
+.. toctree::
+   :maxdepth: 2
+
+   api-ref/index
+
 Indices and tables
 ==================
 
