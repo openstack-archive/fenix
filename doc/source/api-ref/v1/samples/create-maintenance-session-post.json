@@ -1,0 +1,17 @@
+{
+    "hosts": ["overcloud-novacompute-1.opnfvlf.org",
+              "overcloud-novacompute-2.opnfvlf.org",
+              "overcloud-novacompute-3.opnfvlf.org"],
+    "state": "MAINTENANCE",
+    "maintenance_at": "2018-02-28 06:06:03",
+    "metadata": {"openstack_release": "Queens"},
+    "workflow": "default",
+    "download": ["https://my.sw.upgrades.com/SW1.tar.gz",
+                 "https://my.sw.upgrades.com/ESW1.tar.gz",
+                 "https://my.sw.upgrades.com/plugins1.tar.gz"],
+    "actions": [
+        {"plugin": "prepare", "type": "pre"},
+        {"plugin": "esw_upgrade", "type": "host", "metadata": {"upgrade": "ESW1"}},
+        {"plugin": "os_upgrade", "type": "host", "metadata": {"upgrade": "SW1"}},
+        {"plugin": "finalize", "type": "post"}]
+}
