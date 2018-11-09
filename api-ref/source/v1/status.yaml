@@ -1,0 +1,35 @@
+100:
+  default: |
+    An unusual code for an API
+200:
+  default: |
+    Request was successful.
+201:
+  default: >
+    Request has been fulfilled and new resource created. The ``Location`` header
+    has the URL to the new item.
+400:
+  default: |
+    Some content in the request was invalid
+  zone_data_error: |
+    Some of the data for the zone in the request is unavailable to the service.
+401:
+  default: |
+    User must authenticate before making a request.
+403:
+  default: |
+     Policy does not allow current user to do this operation.
+404:
+  default: |
+     Not found.
+405:
+  default: |
+    Method is not valid for this endpoint and resource.
+409:
+ default: |
+    This resource has an action in progress that would conflict with this request.
+ duplicate_zone: |
+    There is already a zone with this name.
+500:
+  default: |
+    Something went wrong with the service which prevents it from fulfilling the request.
