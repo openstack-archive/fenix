@@ -1,3 +1,13 @@
+# This file is not used until the api-ref directory is part of
+# the doc folder and the Fenix documentation is published to 
+# readthedocs.org
+# When Fenix API documentation will be published to [1] and the
+# documentation is builded according to [2] this file will be used
+# again.
+#
+# [1]: https://docs.openstack.org/rocky/api/
+# [2]: https://docs.openstack.org/doc-contrib-guide/api-guides.html
+
 extensions = [
     'os_api_ref',
     'openstackdocstheme'
