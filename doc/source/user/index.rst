@@ -2,4 +2,8 @@
 Users guide
 ===========
 
-Users guide of fenix.
+.. toctree::
+   :maxdepth: 2
+
+   architecture
+   baseworkflow
