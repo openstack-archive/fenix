@@ -51,8 +51,13 @@ Request
 | actions.plugin    | string               | plug-in name. Default workflow executes    | No          | Yes       |
 |                   |                      | plug-ins in an alphabetical order          |             |           |
 +-------------------+----------------------+--------------------------------------------+-------------+-----------+
-| actions.type      | string               | Default workflow support types:            | No          | Yes       |
-|                   |                      | 'pre', 'host' or 'post'                    |             |           |
+| actions.type      | string               | Type of the workflow. Possible values are: | No          | Yes       |
+|                   |                      |                                            |             |           |
+|                   |                      |   * pre: executed before the host type     |             |           |
+|                   |                      |     actions                                |             |           |
+|                   |                      |   * host: executed for every host          |             |           |
+|                   |                      |   * post: executed after the host type     |             |           |
+|                   |                      |     actions                                |             |           |
 +-------------------+----------------------+--------------------------------------------+-------------+-----------+
 | actions.metadata  | dictionary           | Metadata; hints to plug-ins                | No          | Yes       |
 +-------------------+----------------------+--------------------------------------------+-------------+-----------+
