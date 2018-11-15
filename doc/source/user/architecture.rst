@@ -33,7 +33,7 @@ any use case one can think of.
 Internal design
 ===============
 
-Fenix desing is pluggable:
+Fenix design is pluggable:
 
 .. image:: ../images/fenix-internal.png
     :width: 1064 px
