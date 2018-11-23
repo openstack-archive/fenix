@@ -1,0 +1,10 @@
+Code-Review+2: Tomi Juvonen <tomi.juvonen@nokia.com>
+Code-Review+1: Nguyen Hai <nguyentrihai93@gmail.com>
+Code-Review+2: Trinh Nguyen <dangtrinhnt@gmail.com>
+Workflow+1: Tomi Juvonen <tomi.juvonen@nokia.com>
+Verified+2: Zuul
+Submitted-by: Zuul
+Submitted-at: Fri, 23 Nov 2018 19:39:56 +0000
+Reviewed-on: https://review.openstack.org/616902
+Project: openstack/fenix
+Branch: refs/heads/master
