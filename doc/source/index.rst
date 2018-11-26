@@ -17,20 +17,12 @@ Contents:
    library/index
    contributor/index
    configuration/index
-   api/index
+   api-ref/index
    notification/index
    cli/index
    user/index
    admin/index
    reference/index
-
-Experimental API documentation
-==============================
-
-.. toctree::
-   :maxdepth: 2
-
-   api-ref/index
 
 Indices and tables
 ==================
