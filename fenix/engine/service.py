@@ -39,8 +39,8 @@ class EngineService(service_utils.RPCServer):
     def __init__(self):
         target = engine.get_target()
         super(EngineService, self).__init__(target)
-        LOG.error("EngineService init")
+        LOG.info("EngineService init")
 
     def start(self):
         super(EngineService, self).start()
-        LOG.error("EngineService start")
+        LOG.info("EngineService start")
