@@ -56,6 +56,7 @@ def upgrade():
         sa.Column('type', sa.String(length=32), nullable=True),
         sa.Column('maintained', sa.Boolean, default=False),
         sa.Column('disabled', sa.Boolean, default=False),
+        sa.Column('details', sa.String(length=255), nullable=True),
         sa.UniqueConstraint('session_id', 'hostname', name='_session_host_uc'),
         sa.PrimaryKeyConstraint('id'))
 
