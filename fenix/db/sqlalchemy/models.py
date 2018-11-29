@@ -81,6 +81,8 @@ class MaintenanceHost(mb.FenixBase):
     hostname = sa.Column(sa.String(length=255), primary_key=True)
     type = sa.Column(sa.String(length=32), nullable=True)
     maintained = sa.Column(sa.Boolean, default=False)
+    disabled = sa.Column(sa.Boolean, default=False)
+    details = sa.Column(sa.String(length=255), nullable=True)
 
     def to_dict(self):
         return super(MaintenanceHost, self).to_dict()

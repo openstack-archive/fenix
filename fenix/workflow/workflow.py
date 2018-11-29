@@ -122,6 +122,14 @@ class BaseWorkflow(Thread):
     def get_maintained_hosts(self):
         return [host.hostname for host in self.hosts if host.maintained]
 
+    def get_disabled_hosts(self):
+        return [host for host in self.hosts if host.disabled]
+
+    def get_host_by_name(self, hostname):
+        host_obj = [host for host in self.hosts if
+                    host.hostname == hostname][0]
+        return host_obj
+
     def host_maintained(self, hostname):
         host_obj = [host for host in self.hosts if
                     host.hostname == hostname][0]
