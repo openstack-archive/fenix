@@ -21,6 +21,7 @@ from novaclient.exceptions import BadRequest
 from oslo_log import log as logging
 import time
 
+from fenix.db import api as db_api
 from fenix.utils.time import datetime_to_str
 from fenix.utils.time import is_time_after_time
 from fenix.utils.time import reply_time_str
@@ -36,7 +37,13 @@ class Workflow(BaseWorkflow):
 
     def __init__(self, conf, session_id, data):
         super(Workflow, self).__init__(conf, session_id, data)
-        self.nova = novaclient.Client(nova_max_version.get_string(),
+        nova_version = nova_max_version.get_string()
+        if float(nova_version) < 2.53:
+            LOG.error("%s: initialize failed. Nova version %s too old" %
+                      (self.session_id, nova_version))
+            raise Exception("%s: initialize failed. Nova version too old" %
+                            self.session_id)
+        self.nova = novaclient.Client(nova_version,
                                       session=self.auth_session)
         self._init_update_hosts()
         LOG.info("%s: initialized" % self.session_id)
@@ -51,14 +58,31 @@ class Workflow(BaseWorkflow):
             if match:
                 host.type = 'compute'
                 if match[0].status == 'disabled':
-                    LOG.info("compute status from services")
-                    host.disabled = True
+                    LOG.error("%s: %s nova-compute disabled before maintenance"
+                              % (self.session_id, hostname))
+                    raise Exception("%s: %s already disabled"
+                                    % (self.session_id, hostname))
+                host.details = match[0].id
                 continue
             if ([controller for controller in controllers if
                  hostname == controller.host]):
                 host.type = 'controller'
                 continue
             host.type = 'other'
+
+    def disable_host_nova_compute(self, hostname):
+        LOG.info('%s: disable nova-compute on host %s' % (self.session_id,
+                                                          hostname))
+        host = self.get_host_by_name(hostname)
+        self.nova.services.disable_log_reason(host.details, 'maintenance')
+        host.disabled = True
+
+    def enable_host_nova_compute(self, hostname):
+        LOG.info('%s: enable nova-compute on host %s' % (self.session_id,
+                                                         hostname))
+        host = self.get_host_by_name(hostname)
+        self.nova.services.enable(host.details)
+        host.disabled = False
 
     def get_compute_hosts(self):
         return [host.hostname for host in self.hosts
@@ -558,6 +582,12 @@ class Workflow(BaseWorkflow):
             return
         maintained_hosts = self.get_maintained_hosts()
         if not maintained_hosts:
+            computes = self.get_compute_hosts()
+            for compute in computes:
+                # When we start to maintain compute hosts, all these hosts
+                # nova-compute service is disabled, so projects cannot have
+                # instances scheduled to not maintained hosts
+                self.disable_host_nova_compute(compute)
             # First we maintain all empty hosts
             for host in empty_hosts:
                 # TBD we wait host VCPUs to report right, but this is not
@@ -573,6 +603,8 @@ class Workflow(BaseWorkflow):
                 self._admin_notify(self.conf.workflow_project, host,
                                    'MAINTENANCE_COMPLETE',
                                    self.session_id)
+
+                self.enable_host_nova_compute(host)
                 LOG.info('MAINTENANCE_COMPLETE host %s' % host)
                 self.host_maintained(host)
         else:
@@ -590,8 +622,9 @@ class Workflow(BaseWorkflow):
                 self._admin_notify(self.conf.workflow_project, host,
                                    'MAINTENANCE_COMPLETE',
                                    self.session_id)
-                LOG.info('MAINTENANCE_COMPLETE host %s' % host)
 
+                self.enable_host_nova_compute(host)
+                LOG.info('MAINTENANCE_COMPLETE host %s' % host)
                 self.host_maintained(host)
         maintained_hosts = self.get_maintained_hosts()
         if len(maintained_hosts) != len(self.hosts):
@@ -635,3 +668,7 @@ class Workflow(BaseWorkflow):
 
     def maintenance_failed(self):
         LOG.info("%s: maintenance_failed called" % self.session_id)
+
+    def cleanup(self):
+        LOG.info("%s: cleanup" % self.session_id)
+        db_api.remove_session(self.session_id)

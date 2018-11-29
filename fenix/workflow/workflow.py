@@ -46,7 +46,6 @@ class BaseWorkflow(Thread):
             self.hosts = self.init_hosts(self.convert(data['hosts']))
         else:
             self.hosts = []
-        LOG.info('%s:  hosts %s' % (self.session_id, self.hosts))
         # TBD API to support action plugins
         # self.actions =
         self.projects = []
@@ -122,10 +121,32 @@ class BaseWorkflow(Thread):
     def get_maintained_hosts(self):
         return [host.hostname for host in self.hosts if host.maintained]
 
+    def get_disabled_hosts(self):
+        return [host for host in self.hosts if host.disabled]
+
+    def get_host_by_name(self, hostname):
+        host_obj = [host for host in self.hosts if
+                    host.hostname == hostname]
+        if host_obj:
+            if len(host_obj) == 1:
+                return host_obj[0]
+            else:
+                raise Exception('get_host_by_name: %s has duplicate entries' %
+                                hostname)
+        else:
+            raise Exception('get_host_by_name: %s not found' % hostname)
+
     def host_maintained(self, hostname):
         host_obj = [host for host in self.hosts if
-                    host.hostname == hostname][0]
-        host_obj.maintained = True
+                    host.hostname == hostname]
+        if host_obj:
+            if len(host_obj) == 1:
+                host_obj[0].maintained = True
+            else:
+                raise Exception('host_maintained: %s has duplicate entries' %
+                                hostname)
+        else:
+            raise Exception('host_maintained: %s not found' % hostname)
 
     def add_instance(self, instance):
         return db_api.create_instance(instance)
@@ -139,8 +160,16 @@ class BaseWorkflow(Thread):
         db_api.remove_instance(self.session_id, instance_id)
 
     def project(self, project_id):
-        return ([project for project in self.projects if
-                project.project_id == project_id][0])
+        project = ([project for project in self.projects if
+                    project.project_id == project_id])
+        if project:
+            if len(project) == 1:
+                return project[0]
+            else:
+                raise Exception('project: %s has duplicate entries' %
+                                project_id)
+        else:
+            raise Exception('project: %s not found' % project_id)
 
     def project_names(self):
         return [project.project_id for project in self.projects]
@@ -233,13 +262,27 @@ class BaseWorkflow(Thread):
 
     def instance_by_name(self, instance_name):
         instance = [instance for instance in self.instances if
-                    instance.instance_name == instance_name][0]
-        return instance
+                    instance.instance_name == instance_name]
+        if instance:
+            if len(instance) == 1:
+                return instance[0]
+            else:
+                raise Exception('instance_by_name: %s has duplicate entries' %
+                                instance_name)
+        else:
+            raise Exception('instance_by_name: %s not found' % instance_name)
 
     def instance_by_id(self, instance_id):
         instance = [instance for instance in self.instances if
-                    instance.instance_id == instance_id][0]
-        return instance
+                    instance.instance_id == instance_id]
+        if instance:
+            if len(instance) == 1:
+                return instance[0]
+            else:
+                raise Exception('instance_by_id: %s has duplicate entries' %
+                                instance_id)
+        else:
+            raise Exception('instance_by_id: %s not found' % instance_id)
 
     def __str__(self):
         info = 'Instance info:\n'
