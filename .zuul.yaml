@@ -6,9 +6,12 @@
       - check-requirements
       - openstack-lower-constraints-jobs
       - build-openstack-docs-pti
+      - docs-on-readthedocs
     check:
       jobs:
         - build-openstack-releasenotes
     gate:
       jobs:
         - build-openstack-releasenotes
+    vars:
+        rtd_webhook_id: '53170'
