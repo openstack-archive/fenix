@@ -37,14 +37,16 @@ class Workflow(BaseWorkflow):
 
     def __init__(self, conf, session_id, data):
         super(Workflow, self).__init__(conf, session_id, data)
-        nova_version = nova_max_version.get_string()
-        if float(nova_version) < 2.53:
-            LOG.error("%s: initialize failed. Nova version %s too old" %
-                      (self.session_id, nova_version))
-            raise Exception("%s: initialize failed. Nova version too old" %
-                            self.session_id)
-        self.nova = novaclient.Client(nova_version,
-                                      session=self.auth_session)
+        self.nova = novaclient.Client(2.53, session=self.auth_session)
+        max_nova_server_ver = float(self.nova.versions.get_current().version)
+        max_nova_client_ver = nova_max_version.get_string()
+        if max_nova_server_ver > 2.53 and max_nova_client_ver > 2.53:
+            if max_nova_client_ver <= max_nova_server_ver:
+                nova_version = max_nova_client_ver
+            else:
+                nova_version = max_nova_server_ver
+            self.nova = novaclient.Client(nova_version,
+                                          session=self.auth_session)
         self._init_update_hosts()
         LOG.info("%s: initialized" % self.session_id)
 
