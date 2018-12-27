@@ -37,7 +37,8 @@ class Workflow(BaseWorkflow):
 
     def __init__(self, conf, session_id, data):
         super(Workflow, self).__init__(conf, session_id, data)
-        self.nova = novaclient.Client(2.53, session=self.auth_session)
+        nova_version = 2.53
+        self.nova = novaclient.Client(nova_version, session=self.auth_session)
         max_nova_server_ver = float(self.nova.versions.get_current().version)
         max_nova_client_ver = float(nova_max_version.get_string())
         if max_nova_server_ver > 2.53 and max_nova_client_ver > 2.53:
@@ -48,7 +49,8 @@ class Workflow(BaseWorkflow):
             self.nova = novaclient.Client(nova_version,
                                           session=self.auth_session)
         self._init_update_hosts()
-        LOG.info("%s: initialized" % self.session_id)
+        LOG.info("%s: initialized. Nova version %f" % (self.session_id,
+                                                       nova_version))
 
     def _init_update_hosts(self):
         controllers = self.nova.services.list(binary='nova-conductor')
@@ -76,14 +78,25 @@ class Workflow(BaseWorkflow):
         LOG.info('%s: disable nova-compute on host %s' % (self.session_id,
                                                           hostname))
         host = self.get_host_by_name(hostname)
-        self.nova.services.disable_log_reason(host.details, 'maintenance')
+        try:
+            self.nova.services.disable_log_reason(host.details, "maintenance")
+        except TypeError:
+            LOG.debug('%s: Using old API to disable nova-compute on host %s' %
+                      (self.session_id, hostname))
+            self.nova.services.disable_log_reason(hostname, "nova-compute",
+                                                  "maintenance")
         host.disabled = True
 
     def enable_host_nova_compute(self, hostname):
         LOG.info('%s: enable nova-compute on host %s' % (self.session_id,
                                                          hostname))
         host = self.get_host_by_name(hostname)
-        self.nova.services.enable(host.details)
+        try:
+            self.nova.services.enable(host.details)
+        except TypeError:
+            LOG.debug('%s: Using old API to enable nova-compute on host %s' %
+                      (self.session_id, hostname))
+            self.nova.services.enable(hostname, "nova-compute")
         host.disabled = False
 
     def get_compute_hosts(self):
