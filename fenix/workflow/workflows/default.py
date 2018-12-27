@@ -76,14 +76,21 @@ class Workflow(BaseWorkflow):
         LOG.info('%s: disable nova-compute on host %s' % (self.session_id,
                                                           hostname))
         host = self.get_host_by_name(hostname)
-        self.nova.services.disable_log_reason(host.details, 'maintenance')
+        try:
+            self.nova.services.disable_log_reason(host.details, "maintenance")
+        except TypeError:
+            self.nova.services.disable_log_reason(hostname, "nova-compute",
+                                                  "maitenance")
         host.disabled = True
 
     def enable_host_nova_compute(self, hostname):
         LOG.info('%s: enable nova-compute on host %s' % (self.session_id,
                                                          hostname))
         host = self.get_host_by_name(hostname)
-        self.nova.services.enable(host.details)
+        try:
+            self.nova.services.enable(host.details)
+        except TypeError:
+            self.nova.services.enable(hostname, "nova-compute")
         host.disabled = False
 
     def get_compute_hosts(self):
