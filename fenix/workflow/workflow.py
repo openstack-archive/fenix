@@ -41,11 +41,12 @@ class BaseWorkflow(Thread):
         self.timer = {}
         self.session = self._init_session(data)
         LOG.info('%s:  session %s' % (self.session_id, self.session))
-        if len(data['hosts']):
+        self.hosts = []
+        if "hosts" in data and data['hosts']:
             # Hosts given as input, not to be discovered in workflow
             self.hosts = self.init_hosts(self.convert(data['hosts']))
         else:
-            self.hosts = []
+            LOG.info('%s: No hosts as input' % self.session_id)
         # TBD API to support action plugins
         # self.actions =
         self.projects = []
@@ -118,8 +119,9 @@ class BaseWorkflow(Thread):
                 instance_computes.append(instance.host)
         return [host for host in all_computes if host not in instance_computes]
 
-    def get_maintained_hosts(self):
-        return [host.hostname for host in self.hosts if host.maintained]
+    def get_maintained_hosts_by_type(self, host_type):
+        return [host.hostname for host in self.hosts if host.maintained and
+                host.type == host_type]
 
     def get_disabled_hosts(self):
         return [host for host in self.hosts if host.disabled]
@@ -287,6 +289,8 @@ class BaseWorkflow(Thread):
     def __str__(self):
         info = 'Instance info:\n'
         for host in self.hosts:
+            if host.type != 'compute':
+                continue
             info += ('%s:\n' % host.hostname)
             for project in self.project_names():
                 instance_ids = (
