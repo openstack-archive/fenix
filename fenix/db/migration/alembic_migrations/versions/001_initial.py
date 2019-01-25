@@ -53,7 +53,7 @@ def upgrade():
         sa.Column('session_id', sa.String(36),
                   sa.ForeignKey('sessions.session_id')),
         sa.Column('hostname', sa.String(length=255), nullable=False),
-        sa.Column('type', sa.String(length=32), nullable=True),
+        sa.Column('type', sa.String(length=32), nullable=False),
         sa.Column('maintained', sa.Boolean, default=False),
         sa.Column('disabled', sa.Boolean, default=False),
         sa.Column('details', sa.String(length=255), nullable=True),
