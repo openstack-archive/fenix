@@ -48,13 +48,52 @@ class Workflow(BaseWorkflow):
                 nova_version = max_nova_server_ver
             self.nova = novaclient.Client(nova_version,
                                           session=self.auth_session)
-        self._init_update_hosts()
+        if not self.hosts:
+            self.hosts = self._init_hosts_by_services()
+        else:
+            self._init_update_hosts()
         LOG.info("%s: initialized. Nova version %f" % (self.session_id,
                                                        nova_version))
 
+    def _init_hosts_by_services(self):
+        LOG.info("%s: Dicovering hosts by Nova services" % self.session_id)
+        hosts = []
+
+        controllers = self.nova.services.list(binary='nova-conductor')
+        for controller in controllers:
+            host = {}
+            service_host = str(controller.__dict__.get(u'host'))
+            host['hostname'] = service_host
+            host['type'] = 'controller'
+            if str(controller.__dict__.get(u'status')) == 'disabled':
+                LOG.error("%s: %s nova-conductor disabled before maintenance"
+                          % (self.session_id, service_host))
+                raise Exception("%s: %s already disabled"
+                                % (self.session_id, service_host))
+            host['details'] = str(controller.__dict__.get(u'id'))
+            hosts.append(host)
+
+        computes = self.nova.services.list(binary='nova-compute')
+        for compute in computes:
+            host = {}
+            service_host = str(compute.__dict__.get(u'host'))
+            host['hostname'] = service_host
+            host['type'] = 'compute'
+            if str(compute.__dict__.get(u'status')) == 'disabled':
+                LOG.error("%s: %s nova-compute disabled before maintenance"
+                          % (self.session_id, service_host))
+                raise Exception("%s: %s already disabled"
+                                % (self.session_id, service_host))
+            host['details'] = str(compute.__dict__.get(u'id'))
+            hosts.append(host)
+
+        return db_api.create_hosts_by_details(self.session_id, hosts)
+
     def _init_update_hosts(self):
+        LOG.info("%s: Update given hosts" % self.session_id)
         controllers = self.nova.services.list(binary='nova-conductor')
         computes = self.nova.services.list(binary='nova-compute')
+
         for host in self.hosts:
             hostname = host.hostname
             match = [compute for compute in computes if
@@ -161,8 +200,16 @@ class Workflow(BaseWorkflow):
             if project_id not in project_ids:
                 project_ids.append(project_id)
 
-        self.projects = self.init_projects(project_ids)
-        self.instances = self.add_instances(instances)
+        if len(project_ids):
+            self.projects = self.init_projects(project_ids)
+        else:
+            LOG.info('%s: No projects on computes under maintenance %s' %
+                     self.session_id)
+        if len(instances):
+            self.instances = self.add_instances(instances)
+        else:
+            LOG.info('%s: No instances on computes under maintenance %s' %
+                     self.session_id)
         LOG.info(str(self))
 
     def update_instance(self, project_id, instance_id, instance_name, host,
@@ -595,7 +642,7 @@ class Workflow(BaseWorkflow):
             LOG.info("%s: No empty host to be maintained" % self.session_id)
             self.session.state = 'MAINTENANCE_FAILED'
             return
-        maintained_hosts = self.get_maintained_hosts()
+        maintained_hosts = self.get_maintained_compute_hosts()
         if not maintained_hosts:
             computes = self.get_compute_hosts()
             for compute in computes:
@@ -641,8 +688,8 @@ class Workflow(BaseWorkflow):
                 self.enable_host_nova_compute(host)
                 LOG.info('MAINTENANCE_COMPLETE host %s' % host)
                 self.host_maintained(host)
-        maintained_hosts = self.get_maintained_hosts()
-        if len(maintained_hosts) != len(self.hosts):
+        maintained_hosts = self.get_maintained_compute_hosts()
+        if len(maintained_hosts) != len(self.get_compute_hosts()):
             # Not all host maintained
             self.session.state = 'PLANNED_MAINTENANCE'
         else:
@@ -650,8 +697,9 @@ class Workflow(BaseWorkflow):
 
     def planned_maintenance(self):
         LOG.info("%s: planned_maintenance called" % self.session_id)
-        maintained_hosts = self.get_maintained_hosts()
-        not_maintained_hosts = ([h.hostname for h in self.hosts if h.hostname
+        maintained_hosts = self.get_maintained_compute_hosts()
+        compute_hosts = self.get_compute_hosts()
+        not_maintained_hosts = ([host for host in compute_hosts if host
                                  not in maintained_hosts])
         LOG.info("%s: Not maintained hosts: %s" % (self.session_id,
                                                    not_maintained_hosts))

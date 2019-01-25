@@ -143,6 +143,24 @@ def create_hosts(session_id, hostnames):
     return IMPL.create_hosts(hosts)
 
 
+def create_hosts_by_details(session_id, hosts_dict_list):
+    hosts = []
+    for hd in hosts_dict_list:
+        host = {}
+        host['session_id'] = session_id
+        host['hostname'] =  hd["hostname"]
+        if 'type' in hd:
+            host['type'] = hd["type"]
+        if 'maintained' in hd:
+            host['maintained'] = hd['maintained']
+        if 'disabled' in hd:
+            host['disabled'] = hd['disabled']
+        if 'details' in hd:
+            host['details'] = hd['details']
+        hosts.append(host)
+    return IMPL.create_hosts(hosts)
+
+
 def create_projects(session_id, project_ids):
     projects = []
     for project_id in project_ids:
