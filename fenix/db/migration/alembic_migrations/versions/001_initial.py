@@ -57,6 +57,8 @@ def upgrade():
         sa.Column('maintained', sa.Boolean, default=False),
         sa.Column('disabled', sa.Boolean, default=False),
         sa.Column('details', sa.String(length=255), nullable=True),
+        sa.Column('plugin', sa.String(length=255), nullable=True),
+        sa.Column('plugin_state', sa.String(length=32), nullable=True),
         sa.UniqueConstraint('session_id', 'hostname', name='_session_host_uc'),
         sa.PrimaryKeyConstraint('id'))
 
@@ -106,7 +108,6 @@ def upgrade():
         sa.Column('session_id', sa.String(36),
                   sa.ForeignKey('sessions.session_id')),
         sa.Column('plugin', sa.String(length=255), nullable=False),
-        sa.Column('state', sa.String(length=32), nullable=True),
         sa.Column('type', sa.String(length=32), nullable=True),
         sa.Column('meta', MediumText(), nullable=False),
         sa.UniqueConstraint('session_id', 'plugin', name='_session_plugin_uc'),

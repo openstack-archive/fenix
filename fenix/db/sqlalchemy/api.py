@@ -178,6 +178,16 @@ def remove_session(session_id):
         for instance in instances:
             session.delete(instance)
 
+        actions = _actions_get(session, session_id)
+
+        if not actions:
+            # raise not found error
+            raise db_exc.FenixDBNotFound(session, session_id=session_id,
+                                         model='action_plugins')
+
+        for action in actions:
+            session.delete(action)
+
         msession = _maintenance_session_get(session, session_id)
 
         if not msession:
@@ -191,7 +201,7 @@ def remove_session(session_id):
 
 # Action
 def _action_get(session, session_id, plugin):
-    query = model_query(models.MaintenanceActions, session)
+    query = model_query(models.MaintenanceAction, session)
     return query.filter_by(session_id=session_id, plugin=plugin).first()
 
 
@@ -199,9 +209,18 @@ def action_get(session_id, plugin):
     return _action_get(get_session(), session_id, plugin)
 
 
+def _actions_get(session, session_id):
+    query = model_query(models.MaintenanceAction, session)
+    return query.filter_by(session_id=session_id).all()
+
+
+def actions_get(session_id):
+    return _actions_get(get_session(), session_id)
+
+
 def create_action(values):
     values = values.copy()
-    maction = models.MaintenanceActions()
+    maction = models.MaintenanceAction()
     maction.update(values)
 
     session = get_session()
@@ -214,6 +233,23 @@ def create_action(values):
                 model=maction.__class__.__name__, columns=e.columns)
 
     return action_get(maction.session_id, maction.plugin)
+
+
+def create_actions(values_list):
+    for values in values_list:
+        vals = values.copy()
+        session = get_session()
+        with session.begin():
+            maction = models.MaintenanceAction()
+            maction.update(vals)
+            try:
+                maction.save(session=session)
+            except common_db_exc.DBDuplicateEntry as e:
+                # raise exception about duplicated columns (e.columns)
+                raise db_exc.FenixDBDuplicateEntry(
+                    model=maction.__class__.__name__, columns=e.columns)
+
+    return actions_get(maction.session_id)
 
 
 # Host
@@ -386,6 +422,6 @@ def remove_instance(session_id, instance_id):
         if not minstance:
             # raise not found error
             raise db_exc.FenixDBNotFound(session, session_id=session_id,
-                                         model='sessions')
+                                         model='instances')
 
         session.delete(minstance)

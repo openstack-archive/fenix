@@ -56,13 +56,12 @@ class MaintenanceSession(mb.FenixBase):
 class MaintenanceAction(mb.FenixBase):
     """Maintenance action"""
 
-    __tablename__ = 'actions'
+    __tablename__ = 'action_plugins'
 
     id = _id_column()
     session_id = sa.Column(sa.String(36), sa.ForeignKey('sessions.session_id'),
                            nullable=False)
     plugin = sa.Column(sa.String(length=255), nullable=False)
-    state = sa.Column(sa.String(length=32), nullable=True)
     type = sa.Column(sa.String(length=32), nullable=True)
     meta = sa.Column(MediumText(), nullable=False)
 
@@ -83,6 +82,8 @@ class MaintenanceHost(mb.FenixBase):
     maintained = sa.Column(sa.Boolean, default=False)
     disabled = sa.Column(sa.Boolean, default=False)
     details = sa.Column(sa.String(length=255), nullable=True)
+    plugin = sa.Column(sa.String(length=255), nullable=True)
+    plugin_state = sa.Column(sa.String(length=32), nullable=True)
 
     def to_dict(self):
         return super(MaintenanceHost, self).to_dict()

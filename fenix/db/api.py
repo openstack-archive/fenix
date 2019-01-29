@@ -125,6 +125,10 @@ def create_action(values):
     return IMPL.create_action(values)
 
 
+def create_actions(session_id, action_dict_list):
+    return IMPL.create_actions(action_dict_list)
+
+
 def create_host(values):
     """Create a host from the values."""
     return IMPL.create_host(values)
