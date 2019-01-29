@@ -13,15 +13,15 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-revision = '001'
-down_revision = None
-
 import uuid
 
 from alembic import op
 import six
 import sqlalchemy as sa
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
+
+revision = '001'
+down_revision = None
 
 
 def _generate_unicode_uuid():
@@ -57,6 +57,8 @@ def upgrade():
         sa.Column('maintained', sa.Boolean, default=False),
         sa.Column('disabled', sa.Boolean, default=False),
         sa.Column('details', sa.String(length=255), nullable=True),
+        sa.Column('plugin', sa.String(length=255), nullable=True),
+        sa.Column('plugin_state', sa.String(length=32), nullable=True),
         sa.UniqueConstraint('session_id', 'hostname', name='_session_host_uc'),
         sa.PrimaryKeyConstraint('id'))
 
@@ -106,10 +108,24 @@ def upgrade():
         sa.Column('session_id', sa.String(36),
                   sa.ForeignKey('sessions.session_id')),
         sa.Column('plugin', sa.String(length=255), nullable=False),
-        sa.Column('state', sa.String(length=32), nullable=True),
         sa.Column('type', sa.String(length=32), nullable=True),
         sa.Column('meta', MediumText(), nullable=False),
         sa.UniqueConstraint('session_id', 'plugin', name='_session_plugin_uc'),
+        sa.PrimaryKeyConstraint('id'))
+
+    op.create_table(
+        'action_plugin_instances',
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.Column('updated_at', sa.DateTime(), nullable=True),
+        sa.Column('id', sa.String(36), primary_key=True,
+                  default=_generate_unicode_uuid),
+        sa.Column('session_id', sa.String(36),
+                  sa.ForeignKey('sessions.session_id')),
+        sa.Column('plugin', sa.String(length=255), nullable=False),
+        sa.Column('hostname', sa.String(length=255), nullable=False),
+        sa.Column('state', MediumText(), nullable=True),
+        sa.UniqueConstraint('session_id', 'plugin', 'hostname',
+                            name='_session_plugin_instance_uc'),
         sa.PrimaryKeyConstraint('id'))
 
 
