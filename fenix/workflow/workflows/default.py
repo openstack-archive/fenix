@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import datetime
+from importlib import import_module
 
 from novaclient import API_MAX_VERSION as nova_max_version
 import novaclient.client as novaclient
@@ -554,11 +555,45 @@ class Workflow(BaseWorkflow):
                   (server_id, instance.state))
         return False
 
-    def host_maintenance(self, host):
-        LOG.info('maintaining host %s' % host)
-        # TBD Here we should call maintenance plugin given in maintenance
-        # session creation
-        time.sleep(5)
+    def host_maintenance_by_plugin_type(self, hostname, plugin_type):
+        aps = self.get_action_plugins_by_type(plugin_type)
+        if aps:
+            LOG.info("%s: Calling action plug-ins with type %s" %
+                     (self.session_id, plugin_type))
+            for ap in aps:
+                ap_name = "fenix.workflow.actions.%s" % ap.plugin
+                LOG.info("%s: Calling action plug-in module: %s" %
+                         (self.session_id, ap_name))
+                action_plugin = getattr(import_module(ap_name), 'ActionPlugin')
+                ap_db_instance = self._create_action_plugin_instance(ap.plugin,
+                                                                     hostname)
+                ap_instance = action_plugin(self, ap_db_instance)
+                ap_instance.run()
+                if ap_db_instance.state:
+                    LOG.info('%s: %s finished with %s host %s' %
+                             (self.session_id, ap.plugin,
+                              ap_db_instance.state, hostname))
+                    if 'FAILED' in ap_db_instance.state:
+                        raise Exception('%s: %s finished with %s host %s' %
+                                        (self.session_id, ap.plugin,
+                                         ap_db_instance.state, hostname))
+                else:
+                    raise Exception('%s: %s reported no state for host %s' %
+                                    (self.session_id, ap.plugin, hostname))
+                # If ap_db_instance failed, we keep it for state
+                db_api.remove_action_plugin_instance(ap_db_instance)
+        else:
+            LOG.info("%s: No action plug-ins with type %s" %
+                     (self.session_id, plugin_type))
+
+    def host_maintenance(self, hostname):
+        host = self.get_host_by_name(hostname)
+        LOG.info('%s: Maintaining host %s' % (self.session_id, hostname))
+        aps = self.get_action_plugins_by_type(host.type)
+        for plugin_type in ["host", host.type]:
+            self.host_maintenance_by_plugin_type(hostname, plugin_type)
+        LOG.info('%s: Maintaining host %s complete' % (self.session_id,
+                                                       hostname))
 
     def maintenance(self):
         LOG.info("%s: maintenance called" % self.session_id)
