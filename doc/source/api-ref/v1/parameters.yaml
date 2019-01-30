@@ -34,28 +34,28 @@ action-metadata:
   in: body
   required: true
   type: dictionary
-  min_version: \> 1
 
 action-plugin-name:
   description: |
-    plug-in name. Default workflow executes plug-ins in an alphabetical order
+    plug-in name. Default workflow executes same type of plug-ins in an
+    alphabetical order
   in: body
   required: true
   type: string
-  min_version: \> 1
 
 action-plugin-type:
   description: |
-    Type of the workflow. Possible values are:
+    Type of the action plug-in. Default workflow supports:
 
-      * pre: executed before the host type actions
-      * post: executed after the host type actions
+      * pre: executed before the host specific plug-ins
+      * post: executed after the host specific plug-ins
       * host: executed for every host
+      * compute: executed for every compute host
+      * controller: executed for every controller host
 
   in: body
   required: true
   type: integer
-  min_version: \> 1
 
 action-plugins:
   description: |
@@ -63,7 +63,6 @@ action-plugins:
   in: body
   required: true
   type: list of dictionaries
-  min_version: \> 1
 
 hosts:
   description: |
