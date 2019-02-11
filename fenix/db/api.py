@@ -120,9 +120,21 @@ def remove_session(session_id):
     return IMPL.remove_session(session_id)
 
 
-def create_action(values):
+def create_action_plugin(values):
     """Create a action from the values."""
-    return IMPL.create_action(values)
+    return IMPL.create_action_plugin(values)
+
+
+def create_action_plugins(session_id, action_dict_list):
+    return IMPL.create_action_plugins(action_dict_list)
+
+
+def create_action_plugin_instance(values):
+    return IMPL.create_action_plugin_instance(values)
+
+
+def remove_action_plugin_instance(ap_instance):
+    return IMPL.remove_action_plugin_instance(ap_instance)
 
 
 def create_host(values):
