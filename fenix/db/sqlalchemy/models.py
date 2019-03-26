@@ -94,7 +94,7 @@ class MaintenanceHost(mb.FenixBase):
     session_id = sa.Column(sa.String(36), sa.ForeignKey('sessions.session_id'),
                            nullable=False)
     hostname = sa.Column(sa.String(length=255), primary_key=True)
-    type = sa.Column(sa.String(length=32), nullable=False)
+    type = sa.Column(sa.String(length=32), nullable=True)
     maintained = sa.Column(sa.Boolean, default=False)
     disabled = sa.Column(sa.Boolean, default=False)
     details = sa.Column(sa.String(length=255), nullable=True)
