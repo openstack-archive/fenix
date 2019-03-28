@@ -56,15 +56,21 @@ class Workflow(BaseWorkflow):
         LOG.info("%s: initialized. Nova version %f" % (self.session_id,
                                                        nova_version))
 
+        LOG.info('%s: Execute pre action plugins' % (self.session_id))
+        self.maintenance_by_plugin_type("localhost", "pre")
+
     def _init_hosts_by_services(self):
         LOG.info("%s: Dicovering hosts by Nova services" % self.session_id)
         hosts = []
-
+        contoller_host_names = []
         controllers = self.nova.services.list(binary='nova-conductor')
         for controller in controllers:
             host = {}
             service_host = str(controller.__dict__.get(u'host'))
+            if service_host in contoller_host_names:
+                continue
             host['hostname'] = service_host
+            contoller_host_names.append(service_host)
             host['type'] = 'controller'
             if str(controller.__dict__.get(u'status')) == 'disabled':
                 LOG.error("%s: %s nova-conductor disabled before maintenance"
@@ -283,23 +289,42 @@ class Workflow(BaseWorkflow):
         actions_at = self.session.maintenance_at
         state = 'MAINTENANCE'
         self.set_projets_state(state)
-        for project in self.project_names():
-            LOG.info('\nMAINTENANCE to project %s\n' % project)
-            instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
-                                                        self.session_id,
-                                                        project)
-            reply_at = reply_time_str(self.conf.project_maintenance_reply)
-            if is_time_after_time(reply_at, actions_at):
-                LOG.error('%s: No time for project to answer in state: %s' %
-                          (self.session_id, state))
-                self.session.state = "MAINTENANCE_FAILED"
-                return False
-            metadata = self.session.meta
-            self._project_notify(project, instance_ids, allowed_actions,
-                                 actions_at, reply_at, state, metadata)
-        self.start_timer(self.conf.project_maintenance_reply,
-                         'MAINTENANCE_TIMEOUT')
-        return self.wait_projects_state(state, 'MAINTENANCE_TIMEOUT')
+        all_replied = False
+        project_not_replied = None
+        retry = 2
+        while not all_replied:
+            for project in self.project_names():
+                if (project_not_replied is not None and project not in
+                        project_not_replied):
+                    continue
+                LOG.info('\nMAINTENANCE to project %s\n' % project)
+                instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
+                                                            self.session_id,
+                                                            project)
+                reply_at = reply_time_str(self.conf.project_maintenance_reply)
+                if is_time_after_time(reply_at, actions_at):
+                    LOG.error('%s: No time for project to answer in state: %s'
+                              % (self.session_id, state))
+                    self.session.state = "MAINTENANCE_FAILED"
+                    return False
+                metadata = self.session.meta
+                self._project_notify(project, instance_ids, allowed_actions,
+                                     actions_at, reply_at, state, metadata)
+            self.start_timer(self.conf.project_maintenance_reply,
+                             'MAINTENANCE_TIMEOUT')
+
+            all_replied = self.wait_projects_state(state, '%s_TIMEOUT' % state)
+            if not all_replied:
+                if retry == 0:
+                    LOG.info('confirm_maintenance failed after retries')
+                    break
+                else:
+                    LOG.info('confirm_maintenance retry')
+                    projects = self.get_projects_with_state()
+                    project_not_replied = (
+                        self._project_names_in_state(projects, state))
+            retry -= 1
+        return all_replied
 
     def confirm_scale_in(self):
         allowed_actions = []
@@ -307,17 +332,36 @@ class Workflow(BaseWorkflow):
         reply_at = actions_at
         state = 'SCALE_IN'
         self.set_projets_state(state)
-        for project in self.project_names():
-            LOG.info('\nSCALE_IN to project %s\n' % project)
-            instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
-                                                        self.session_id,
-                                                        project)
-            metadata = self.session.meta
-            self._project_notify(project, instance_ids, allowed_actions,
-                                 actions_at, reply_at, state, metadata)
-        self.start_timer(self.conf.project_scale_in_reply,
-                         'SCALE_IN_TIMEOUT')
-        return self.wait_projects_state(state, 'SCALE_IN_TIMEOUT')
+        all_replied = False
+        project_not_replied = None
+        retry = 2
+        while not all_replied:
+            for project in self.project_names():
+                if (project_not_replied is not None and project not in
+                        project_not_replied):
+                    continue
+                LOG.info('\nSCALE_IN to project %s\n' % project)
+                instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
+                                                            self.session_id,
+                                                            project)
+                metadata = self.session.meta
+                self._project_notify(project, instance_ids, allowed_actions,
+                                     actions_at, reply_at, state, metadata)
+            self.start_timer(self.conf.project_scale_in_reply,
+                             'SCALE_IN_TIMEOUT')
+
+            all_replied = self.wait_projects_state(state, '%s_TIMEOUT' % state)
+            if not all_replied:
+                if retry == 0:
+                    LOG.info('confirm_scale_in failed after retries')
+                    break
+                else:
+                    LOG.info('confirm_scale_in retry')
+                    projects = self.get_projects_with_state()
+                    project_not_replied = (
+                        self._project_names_in_state(projects, state))
+            retry -= 1
+        return all_replied
 
     def need_scale_in(self):
         hvisors = self.nova.hypervisors.list(detailed=True)
@@ -408,20 +452,38 @@ class Workflow(BaseWorkflow):
         actions_at = reply_time_str(self.conf.project_maintenance_reply)
         reply_at = actions_at
         self.set_projects_state_and_hosts_instances(state, [host])
-        for project in self.project_names():
-            if not self.project_has_state_instances(project):
-                continue
-            LOG.info('%s to project %s' % (state, project))
+        all_replied = False
+        project_not_replied = None
+        retry = 2
+        while not all_replied:
+            for project in self.project_names():
+                if not self.project_has_state_instances(project):
+                    continue
+                if (project_not_replied is not None and project not in
+                        project_not_replied):
+                    continue
+                LOG.info('%s to project %s' % (state, project))
 
-            instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
-                                                        self.session_id,
-                                                        project)
-            metadata = self.session.meta
-            self._project_notify(project, instance_ids, allowed_actions,
-                                 actions_at, reply_at, state, metadata)
-        self.start_timer(self.conf.project_maintenance_reply,
-                         '%s_TIMEOUT' % state)
-        return self.wait_projects_state(state, '%s_TIMEOUT' % state)
+                instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
+                                                            self.session_id,
+                                                            project)
+                metadata = self.session.meta
+                self._project_notify(project, instance_ids, allowed_actions,
+                                     actions_at, reply_at, state, metadata)
+            self.start_timer(self.conf.project_maintenance_reply,
+                             '%s_TIMEOUT' % state)
+            all_replied = self.wait_projects_state(state, '%s_TIMEOUT' % state)
+            if not all_replied:
+                if retry == 0:
+                    LOG.info('confirm_host_to_be_emptied failed after retries')
+                    break
+                else:
+                    LOG.info('confirm_host_to_be_emptied retry')
+                    projects = self.get_projects_with_state()
+                    project_not_replied = (
+                        self._project_names_in_state(projects, state))
+            retry -= 1
+        return all_replied
 
     def confirm_maintenance_complete(self):
         state = 'MAINTENANCE_COMPLETE'
@@ -429,17 +491,37 @@ class Workflow(BaseWorkflow):
         actions_at = reply_time_str(self.conf.project_scale_in_reply)
         reply_at = actions_at
         self.set_projets_state(state)
-        for project in self.project_names():
-            LOG.info('%s to project %s' % (state, project))
-            instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
-                                                        self.session_id,
-                                                        project)
-            allowed_actions = []
-            self._project_notify(project, instance_ids, allowed_actions,
-                                 actions_at, reply_at, state, metadata)
-        self.start_timer(self.conf.project_scale_in_reply,
-                         '%s_TIMEOUT' % state)
-        return self.wait_projects_state(state, '%s_TIMEOUT' % state)
+        all_replied = False
+        project_not_replied = None
+        retry = 2
+        while not all_replied:
+            for project in self.project_names():
+                if (project_not_replied is not None and project not in
+                        project_not_replied):
+                    continue
+                LOG.info('%s to project %s' % (state, project))
+                instance_ids = '%s/v1/maintenance/%s/%s' % (self.url,
+                                                            self.session_id,
+                                                            project)
+                allowed_actions = []
+                self._project_notify(project, instance_ids, allowed_actions,
+                                     actions_at, reply_at, state, metadata)
+            self.start_timer(self.conf.project_scale_in_reply,
+                             '%s_TIMEOUT' % state)
+
+            all_replied = self.wait_projects_state(state, '%s_TIMEOUT' % state)
+            if not all_replied:
+                if retry == 0:
+                    LOG.info('confirm_maintenance_complete failed after '
+                             'retries')
+                    break
+                else:
+                    LOG.info('confirm_maintenance_complete retry')
+                    projects = self.get_projects_with_state()
+                    project_not_replied = (
+                        self._project_names_in_state(projects, state))
+            retry -= 1
+        return all_replied
 
     def notify_action_done(self, project, instance):
         instance_ids = [instance.instance_id]
@@ -501,31 +583,34 @@ class Workflow(BaseWorkflow):
         server_id = instance.instance_id
         server = self.nova.servers.get(server_id)
         instance.state = server.__dict__.get('OS-EXT-STS:vm_state')
-        LOG.info('server %s state %s' % (server_id, instance.state))
+        orig_host = str(server.__dict__.get('OS-EXT-SRV-ATTR:host'))
+        LOG.info('server %s state %s host %s' % (server_id, instance.state,
+                                                 orig_host))
         last_vm_state = instance.state
         retry_migrate = 2
         while True:
             try:
                 server.migrate()
                 time.sleep(5)
-                retries = 36
+                retries = 48
                 while instance.state != 'resized' and retries > 0:
-                    # try to confirm within 3min
+                    # try to confirm within 4min
                     server = self.nova.servers.get(server_id)
+                    host = str(server.__dict__.get('OS-EXT-SRV-ATTR:host'))
                     instance.state = server.__dict__.get('OS-EXT-STS:vm_state')
                     if instance.state == 'resized':
                         server.confirm_resize()
-                        LOG.info('instance %s migration confirmed' %
-                                 server_id)
-                        instance.host = (
-                            str(server.__dict__.get('OS-EXT-SRV-ATTR:host')))
+                        LOG.info('instance %s migration resized to host %s' %
+                                 (server_id, host))
+                        instance.host = host
                         return True
                     if last_vm_state != instance.state:
-                        LOG.info('instance %s state: %s' % (server_id,
+                        LOG.info('instance %s state changed: %s' % (server_id,
                                  instance.state))
                     if instance.state == 'error':
                         LOG.error('instance %s migration failed, state: %s'
                                   % (server_id, instance.state))
+                        instance.host = host
                         return False
                     time.sleep(5)
                     retries = retries - 1
@@ -555,7 +640,7 @@ class Workflow(BaseWorkflow):
                   (server_id, instance.state))
         return False
 
-    def host_maintenance_by_plugin_type(self, hostname, plugin_type):
+    def maintenance_by_plugin_type(self, hostname, plugin_type):
         aps = self.get_action_plugins_by_type(plugin_type)
         if aps:
             LOG.info("%s: Calling action plug-ins with type %s" %
@@ -590,7 +675,9 @@ class Workflow(BaseWorkflow):
         host = self.get_host_by_name(hostname)
         LOG.info('%s: Maintaining host %s' % (self.session_id, hostname))
         for plugin_type in ["host", host.type]:
-            self.host_maintenance_by_plugin_type(hostname, plugin_type)
+            LOG.info('%s: Execute %s action plugins' % (self.session_id,
+                                                        plugin_type))
+            self.maintenance_by_plugin_type(hostname, plugin_type)
         LOG.info('%s: Maintaining host %s complete' % (self.session_id,
                                                        hostname))
 
@@ -690,6 +777,17 @@ class Workflow(BaseWorkflow):
                 # nova-compute service is disabled, so projects cannot have
                 # instances scheduled to not maintained hosts
                 self.disable_host_nova_compute(compute)
+            for host in self.get_controller_hosts():
+                LOG.info('IN_MAINTENANCE controller %s' % host)
+                self._admin_notify(self.conf.workflow_project, host,
+                                   'IN_MAINTENANCE',
+                                   self.session_id)
+                self.host_maintenance(host)
+                self._admin_notify(self.conf.workflow_project, host,
+                                   'MAINTENANCE_COMPLETE',
+                                   self.session_id)
+                LOG.info('MAINTENANCE_COMPLETE controller %s' % host)
+                self.host_maintained(host)
             # First we maintain all empty hosts
             for host in empty_hosts:
                 # TBD we wait host VCPUs to report right, but this is not
@@ -697,7 +795,7 @@ class Workflow(BaseWorkflow):
                 # also this could be made parallel if more than one empty host
                 self._wait_host_empty(host)
 
-                LOG.info('IN_MAINTENANCE host %s' % host)
+                LOG.info('IN_MAINTENANCE compute %s' % host)
                 self._admin_notify(self.conf.workflow_project, host,
                                    'IN_MAINTENANCE',
                                    self.session_id)
@@ -707,7 +805,7 @@ class Workflow(BaseWorkflow):
                                    self.session_id)
 
                 self.enable_host_nova_compute(host)
-                LOG.info('MAINTENANCE_COMPLETE host %s' % host)
+                LOG.info('MAINTENANCE_COMPLETE compute %s' % host)
                 self.host_maintained(host)
         else:
             # Now we maintain hosts gone trough PLANNED_MAINTENANCE
@@ -758,6 +856,8 @@ class Workflow(BaseWorkflow):
 
     def maintenance_complete(self):
         LOG.info("%s: maintenance_complete called" % self.session_id)
+        LOG.info('%s: Execute post action plugins' % self.session_id)
+        self.maintenance_by_plugin_type("localhost", "post")
         LOG.info('Projects may still need to up scale back to full '
                  'capcity')
         if not self.confirm_maintenance_complete():

@@ -46,7 +46,7 @@ opts = [
                default=os.environ.get('OS_PROJECT_NAME', 'admin'),
                help="API host IP"),
     cfg.IntOpt('project_maintenance_reply',
-               default=20,
+               default=40,
                help="Project maintenance reply confirmation time in seconds"),
     cfg.IntOpt('project_scale_in_reply',
                default=60,

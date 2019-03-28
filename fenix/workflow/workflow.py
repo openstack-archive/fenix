@@ -68,13 +68,9 @@ class BaseWorkflow(Thread):
                                       conf.workflow_project)
         self.auth_session = get_session(auth=self.auth)
         self.aodh = aodhclient.Client('2', self.auth_session)
-        transport = messaging.get_transport(self.conf)
-        self.notif_proj = messaging.Notifier(transport,
-                                             'maintenance.planned',
-                                             driver='messaging',
-                                             topics=['notifications'])
-        self.notif_proj = self.notif_proj.prepare(publisher_id='fenix')
-        self.notif_admin = messaging.Notifier(transport,
+        self.transport = messaging.get_transport(self.conf)
+        self.notif_proj = {}
+        self.notif_admin = messaging.Notifier(self.transport,
                                               'maintenance.host',
                                               driver='messaging',
                                               topics=['notifications'])
@@ -86,6 +82,15 @@ class BaseWorkflow(Thread):
 
     def init_projects(self, project_ids):
         LOG.info('%s:  init_projects: %s' % (self.session_id, project_ids))
+        for project_id in project_ids:
+            transport = messaging.get_transport(self.conf)
+            self.notif_proj[project_id] = (
+                messaging.Notifier(transport,
+                                   'maintenance.planned',
+                                   driver='messaging',
+                                   topics=['notifications']))
+            self.notif_proj[project_id] = (
+                self.notif_proj[project_id].prepare(publisher_id='fenix'))
         return db_api.create_projects(self.session_id, project_ids)
 
     def convert(self, data):
@@ -137,6 +142,10 @@ class BaseWorkflow(Thread):
     def get_compute_hosts(self):
         return [host.hostname for host in self.hosts
                 if host.type == 'compute']
+
+    def get_controller_hosts(self):
+        return [host.hostname for host in self.hosts
+                if host.type == 'controller']
 
     def get_empty_computes(self):
         all_computes = self.get_compute_hosts()
@@ -424,8 +433,11 @@ class BaseWorkflow(Thread):
 
         LOG.info('Sending "maintenance.planned" to project: %s' % payload)
 
-        self.notif_proj.info({'some': 'context'}, 'maintenance.scheduled',
-                             payload)
+        self.notif_proj[project_id].info({'some': 'context'},
+                                         'maintenance.scheduled',
+                                         payload)
+        # TBD seems sending message quickly after other causes one to disappear
+        # time.sleep(2)
 
     def _admin_notify(self, project, host, state, session_id):
         payload = dict(project_id=project, host=host, state=state,

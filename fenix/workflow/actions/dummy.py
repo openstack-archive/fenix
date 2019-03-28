@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 from oslo_log import log as logging
+import subprocess
 
 LOG = logging.getLogger(__name__)
 
@@ -28,4 +29,9 @@ class ActionPlugin(object):
     def run(self):
         LOG.info("%s: Dummy action plugin run %s" % (self.wf.session_id,
                                                      self.hostname))
+        try_ssh = subprocess.check_output("echo Dummy running in %s" %
+                                          self.hostname,
+                                          shell=True)
+        LOG.info("%s: OUTPUT: %s" % (self.wf.session_id, try_ssh))
+
         self.ap_dbi.state = "DONE"
