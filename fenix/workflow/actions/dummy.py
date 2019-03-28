@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 from oslo_log import log as logging
+import subprocess
 
 LOG = logging.getLogger(__name__)
 
@@ -28,4 +29,11 @@ class ActionPlugin(object):
     def run(self):
         LOG.info("%s: Dummy action plugin run %s" % (self.wf.session_id,
                                                      self.hostname))
-        self.ap_dbi.state = "DONE"
+        try:
+            output = subprocess.check_output("echo Dummy running in %s" %
+                                             self.hostname,
+                                             shell=True)
+            self.ap_dbi.state = "DONE"
+        except subprocess.CalledProcessError:
+            self.ap_dbi.state = "FAILED"
+        LOG.debug("%s: OUTPUT: %s" % (self.wf.session_id, output))

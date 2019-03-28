@@ -138,6 +138,10 @@ class BaseWorkflow(Thread):
         return [host.hostname for host in self.hosts
                 if host.type == 'compute']
 
+    def get_controller_hosts(self):
+        return [host.hostname for host in self.hosts
+                if host.type == 'controller']
+
     def get_empty_computes(self):
         all_computes = self.get_compute_hosts()
         instance_computes = []
