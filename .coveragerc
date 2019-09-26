@@ -1,6 +1,0 @@
-[run]
-branch = True
-source = fenix
-
-[report]
-ignore_errors = True
